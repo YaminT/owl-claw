@@ -119,11 +119,16 @@ bun run dev
 ### Uninstall
 
 ```sh
+owlrun uninstall                      # interactive confirmation
+owlrun uninstall --yes                # skip confirmation
+owlrun uninstall --yes --purge        # also remove ~/.owlrun and ~/owlrun.log
+
+# or directly:
 ./install.sh --uninstall              # user install
 sudo ./install.sh --uninstall         # if --system or --systemd was used
 ```
 
-`--uninstall` probes both user and system locations and removes whatever it finds (wrapper, source tree, systemd unit). User data in `~/.owlrun/` is **kept**; remove it manually if you don't need it.
+Both `owlrun uninstall` and `install.sh --uninstall` probe both user and system locations and remove whatever they find (wrapper, source tree, systemd unit). User data in `~/.owlrun/` is **kept by default** — pass `--purge` (CLI) or remove it manually to wipe state.
 
 ---
 
@@ -420,10 +425,18 @@ owlRun/
 ## Building a release
 
 ```sh
-bun run release          # → dist/owlrun-<version>.tar.gz + .sha256
+bun run release          # → dist/owlrun-<version>.{tar.gz,zip} + .sha256
 ```
 
-The tarball contains `bin/`, `src/`, `public/`, `deploy/`, `scripts/`, `install.sh`, `package.json`, `tsconfig.json`, `LICENSE`, `README.md` — everything `install.sh` needs. Top-level dir inside is `owlrun-<version>/` so `tar -xzf` lands in a clean folder.
+Each archive contains `bin/`, `src/`, `public/`, `deploy/`, `scripts/`, `install.sh`, `package.json`, `tsconfig.json`, `LICENSE`, `README.md` — everything `install.sh` needs. Top-level dir inside is `owlrun-<version>/` so it lands in a clean folder.
+
+If the receiving host doesn't have `unzip` (common on minimal Ubuntu/Debian), use the `.tar.gz` (always extractable with `tar`), or extract the `.zip` with Python:
+
+```sh
+python3 -c "import zipfile; zipfile.ZipFile('owlrun-0.1.0.zip').extractall()"
+chmod +x owlrun-0.1.0/install.sh    # python's zipfile preserves perms on most systems
+cd owlrun-0.1.0 && ./install.sh
+```
 
 ---
 

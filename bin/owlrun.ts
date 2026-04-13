@@ -162,6 +162,7 @@ ${fmt.head("Commands:")}
   ${c.cyan}logs${c.reset} [-f|-n N|--journal] Show log tail (-f follow, -n lines, --journal use journalctl)
   ${c.cyan}open${c.reset}                    Print (and open) the web UI URL
   ${c.cyan}attach${c.reset}                  Attach to the tmux session (tmux mode only)
+  ${c.cyan}uninstall${c.reset} [--yes|--purge]  Remove OwlRun (sources, wrapper, systemd unit). --purge removes ~/.owlrun too.
   ${c.cyan}version${c.reset} ${c.cyan}help${c.reset}
 
 ${fmt.head("Supervisor detection:")}
@@ -599,6 +600,68 @@ function cmdVersion(): CommandResult {
   return { exitCode: 0 };
 }
 
+/* ---------- uninstall ---------- */
+
+async function cmdUninstall(args: string[]): Promise<CommandResult> {
+  const installer = join(PROJECT_ROOT, "install.sh");
+  if (!existsSync(installer)) {
+    console.error(fmt.err(`installer not found at ${installer}`));
+    console.error(fmt.dim("(this OwlRun was not installed via install.sh; remove the source tree manually)"));
+    return { exitCode: 1 };
+  }
+
+  const yes = args.includes("--yes") || args.includes("-y");
+  const purge = args.includes("--purge");
+
+  console.log(fmt.head("This will remove:"));
+  console.log(`  - source tree: ${fmt.dim(PROJECT_ROOT)}`);
+  console.log(`  - wrapper script (owlrun)`);
+  const unit = systemdUnitInstalled();
+  if (unit) console.log(`  - systemd unit: ${fmt.dim(unit)}`);
+  if (purge) console.log(`  - ${fmt.dim("user data:")} ${expandHome("~/.owlrun")} ${fmt.dim("(--purge)")}`);
+  else console.log(`  ${fmt.dim("(user data in ~/.owlrun/ is kept; pass --purge to remove it too)")}`);
+  console.log();
+
+  if (!(await confirm("Proceed?", yes))) {
+    console.log(fmt.dim("aborted"));
+    return { exitCode: 0 };
+  }
+
+  // Stop any running instance first so the unit and process die cleanly.
+  if (await isPortListening()) {
+    console.log(fmt.dim("stopping running instance…"));
+    const stopRes = unit ? await stopSystemd() : await stopTmux();
+    if (stopRes.exitCode !== 0) {
+      console.error(fmt.warn("stop failed; continuing with uninstall anyway"));
+    }
+  }
+
+  // Need root if the install lives under /opt or /usr or there is a systemd unit.
+  const needsSudo = PROJECT_ROOT.startsWith("/opt") || PROJECT_ROOT.startsWith("/usr") || unit !== null;
+  const isRoot = process.getuid?.() === 0;
+  const cmd = (needsSudo && !isRoot)
+    ? ["sudo", "-p", "[sudo] password to uninstall OwlRun: ", "bash", installer, "--uninstall"]
+    : ["bash", installer, "--uninstall"];
+
+  const proc = Bun.spawn({ cmd, stdin: "inherit", stdout: "inherit", stderr: "inherit" });
+  const exitCode = (await proc.exited) ?? 1;
+
+  if (exitCode === 0 && purge) {
+    const userHome = expandHome("~/.owlrun");
+    const logFile = expandHome("~/owlrun.log");
+    if (existsSync(userHome)) {
+      await run(["rm", "-rf", userHome]);
+      console.log(fmt.ok(`removed ${userHome}`));
+    }
+    if (existsSync(logFile)) {
+      await run(["rm", "-f", logFile]);
+      console.log(fmt.ok(`removed ${logFile}`));
+    }
+  }
+
+  return { exitCode };
+}
+
 /* ---------- requirements installer ---------- */
 
 const KNOWN_TOOLS = ["claude", "codex"] as const;
@@ -785,6 +848,7 @@ const COMMANDS: Record<string, Handler> = {
   logs: cmdLogs,
   attach: cmdAttach,
   open: cmdOpen,
+  uninstall: cmdUninstall,
   version: cmdVersion,
   "--version": cmdVersion,
   "-v": cmdVersion,
