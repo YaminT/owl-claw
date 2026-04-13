@@ -183,6 +183,64 @@ ${fmt.head("Environment:")}
 
 /* ---------- commands ---------- */
 
+interface AuthResult { authed: boolean; detail: string }
+
+/**
+ * `claude auth status` returns JSON ({ loggedIn, authMethod, email, ... })
+ * with exit 0 when logged in, exit 1 when not. Cheap — does not make an
+ * API call.
+ */
+async function checkClaudeAuth(): Promise<AuthResult> {
+  try {
+    const r = await Bun.spawn({ cmd: ["claude", "auth", "status"], stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(r.stdout).text(),
+      new Response(r.stderr).text(),
+      r.exited,
+    ]);
+    const body = stdout.trim() || stderr.trim();
+    try {
+      const data = JSON.parse(body) as { loggedIn?: boolean; email?: string; authMethod?: string; subscriptionType?: string };
+      if (data.loggedIn) {
+        const who = data.email ?? data.authMethod ?? "logged in";
+        const sub = data.subscriptionType ? `, ${data.subscriptionType}` : "";
+        return { authed: true, detail: ` (${who}${sub})` };
+      }
+      return { authed: false, detail: "not logged in" };
+    } catch {
+      const ok = (exitCode ?? 1) === 0;
+      return { authed: ok, detail: ok ? "" : "not logged in" };
+    }
+  } catch {
+    return { authed: false, detail: "auth status check failed" };
+  }
+}
+
+/**
+ * `codex login status` prints "Logged in using <method>" with exit 0 when
+ * authenticated, "Not logged in" with exit 1 otherwise.
+ */
+async function checkCodexAuth(): Promise<AuthResult> {
+  try {
+    // codex writes "Logged in using <method>" to stderr, not stdout.
+    const r = await Bun.spawn({ cmd: ["codex", "login", "status"], stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(r.stdout).text(),
+      new Response(r.stderr).text(),
+      r.exited,
+    ]);
+    const combined = `${stdout}\n${stderr}`;
+    if ((exitCode ?? 1) === 0) {
+      const m = combined.match(/Logged in(?:\s+using\s+([^\n]+))?/i);
+      const who = m?.[1]?.trim();
+      return { authed: true, detail: who ? ` (${who})` : "" };
+    }
+    return { authed: false, detail: "not logged in" };
+  } catch {
+    return { authed: false, detail: "auth status check failed" };
+  }
+}
+
 async function cmdDoctor(): Promise<CommandResult> {
   console.log(fmt.head("OwlRun doctor"));
   console.log();
@@ -226,7 +284,13 @@ async function cmdDoctor(): Promise<CommandResult> {
   if (claudePath) {
     try {
       const v = (await run(["claude", "--version"])).stdout.trim().split("\n")[0];
-      console.log(fmt.ok(`claude ${v} ${fmt.dim("at " + claudePath)}`));
+      const auth = await checkClaudeAuth();
+      if (auth.authed) {
+        console.log(fmt.ok(`claude ${v}${auth.detail} ${fmt.dim("at " + claudePath)}`));
+      } else {
+        console.log(fmt.err(`claude ${v} — ${auth.detail || "not logged in"} ${fmt.dim("(run `claude` or `claude setup-token`)")}`));
+        errors++;
+      }
     } catch (e) {
       console.log(fmt.warn(`claude — installed but not runnable: ${String(e).slice(0, 120)}`));
       warnings++;
@@ -241,7 +305,13 @@ async function cmdDoctor(): Promise<CommandResult> {
   if (codexPath) {
     try {
       const v = (await run(["codex", "--version"])).stdout.trim().split("\n")[0];
-      console.log(fmt.ok(`codex ${v} ${fmt.dim("at " + codexPath)}`));
+      const auth = await checkCodexAuth();
+      if (auth.authed) {
+        console.log(fmt.ok(`codex ${v}${auth.detail} ${fmt.dim("at " + codexPath)}`));
+      } else {
+        console.log(fmt.warn(`codex ${v} — ${auth.detail || "not logged in"} ${fmt.dim("(run `codex login`)")}`));
+        warnings++;
+      }
     } catch (e) {
       console.log(fmt.warn(`codex — installed but not runnable: ${String(e).slice(0, 120)}`));
       warnings++;
