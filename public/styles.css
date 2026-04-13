@@ -49,7 +49,12 @@ body {
   gap: 10px;
   margin-bottom: 24px;
 }
-.brand-mark { font-size: 24px; }
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
 .brand-name {
   font-weight: 700;
   font-size: 18px;
