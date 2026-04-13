@@ -46,8 +46,10 @@ A web UI lets you queue, edit, observe, and re-queue; a CLI does everything from
 ## Quickstart
 
 ```sh
-# 1. Install via npm (Node 20+)
-npm install -g owlrun
+# 1. Install via npm (Node 20+).
+#    Package name is `owlrunner` (the unscoped `owlrun` is squatted on npm
+#    by an unrelated 2020 package). The CLI command stays `owlrun`.
+npm install -g owlrunner
 # OR via the tarball installer (no Node required, bundles its own runtime):
 #   tar -xzf owlrun-0.1.0.tar.gz && cd owlrun-0.1.0 && ./install.sh
 
@@ -63,7 +65,7 @@ owlrun open
 
 That's it. Drop a `.md` file in `~/.owlrun/instructions/` — or hit **+ New instruction** in the UI — and the worker picks it up within 2 seconds.
 
-> **This branch (`npm-package`)** ports the runtime from Bun to Node so OwlRun can be installed via `npm i -g owlrun`. The `main` branch is the original Bun-native build with the `install.sh` installer. Both are functionally identical from a user's perspective.
+> **This branch (`npm-package`)** ports the runtime from Bun to Node so OwlRun can be installed via `npm install -g owlrunner`. The `main` branch is the original Bun-native build with the `install.sh` installer. Both are functionally identical from a user's perspective; only the install/runtime mechanism differs.
 
 ---
 

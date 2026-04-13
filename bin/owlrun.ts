@@ -7,7 +7,8 @@ import { spawn as nodeSpawn } from "node:child_process";
 import { runProcess, which as runtimeWhich, sleepMs } from "../src/runtime.js";
 
 // Resolve the OwlRun project root from this script's location. Walk up until
-// we find a package.json whose name matches.
+// we find a package.json whose name matches the npm package name.
+const PACKAGE_NAME = "owlrunner";
 function findProjectRoot(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   let dir = here;
@@ -16,7 +17,7 @@ function findProjectRoot(): string {
     if (existsSync(pkg)) {
       try {
         const name = JSON.parse(readFileSync(pkg, "utf8")).name;
-        if (name === "owlrun") return dir;
+        if (name === PACKAGE_NAME) return dir;
       } catch {}
     }
     const parent = dirname(dir);

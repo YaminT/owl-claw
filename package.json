@@ -1,5 +1,5 @@
 {
-  "name": "owlrun",
+  "name": "owlrunner",
   "version": "0.1.0",
   "description": "Persistent local runner for Claude Code / Codex instruction files with a web portal",
   "type": "module",
