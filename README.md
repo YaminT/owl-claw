@@ -10,7 +10,8 @@
   <a href="#cli">CLI</a> ·
   <a href="#web-portal">Web</a> ·
   <a href="#configuration">Config</a> ·
-  <a href="#troubleshooting">Troubleshooting</a>
+  <a href="#troubleshooting">Troubleshooting</a> ·
+  <a href="#faq">FAQ</a>
 </p>
 
 ---
@@ -397,6 +398,78 @@ bun run release          # → dist/owlrun-<version>.{tar.gz,zip} + .sha256
 ```
 
 Both archives contain `bin/`, `src/`, `public/`, `deploy/`, `scripts/`, `install.sh`, `package.json`, `tsconfig.json`, `LICENSE`, `README.md`. Top-level dir inside is `owlrun-<version>/` so they extract into a clean folder. The zip preserves unix file modes (`install.sh` stays executable on extract).
+
+---
+
+## FAQ
+
+### How do I run Claude Code unattended for hours?
+
+That's exactly what OwlRun does. Drop your tasks as Markdown files in `~/.owlrun/instructions/`, then `owlrun start`. The worker polls every 2 seconds and runs them sequentially, retrying on rate limits / overload / 503 / `retry-after` hints up to `OWLRUN_MAX_RETRIES` times (default 20). Pair it with `--systemd` so the unit comes back automatically after reboots and process crashes — a multi-hour run will survive an OOM, a kernel panic, or you killing the process by accident.
+
+### How do I run Claude Code in the background?
+
+`owlrun start` detaches into a tmux session named `owlrun` (or starts the systemd unit if installed). Both options keep the worker running after you log out. Inspect from anywhere with `owlrun status`, `owlrun logs -f`, or `owlrun attach` (tmux mode). For a true server install, prefer `sudo ./install.sh --systemd` — that way Claude Code keeps running across reboots without you doing anything.
+
+### Can I run multiple Claude Code agents in parallel?
+
+OwlRun is **deliberately sequential** inside a single instance — running multiple Claude Code workers against the same git repo at the same time corrupts state in subtle ways (overlapping diffs, lockfile races, conflicting commits). If you need parallelism, run **multiple OwlRun instances** on different ports targeting different repos:
+
+```sh
+OWLRUN_PORT=8090 OWLRUN_INSTRUCTIONS_DIR=~/.owlrun/api OWLRUN_FRONTEND_DIR=~/code/api owlrun start
+OWLRUN_PORT=8091 OWLRUN_INSTRUCTIONS_DIR=~/.owlrun/web OWLRUN_FRONTEND_DIR=~/code/web owlrun start
+```
+
+Or just put your tasks in order with numeric prefixes (`001-foo.md`, `002-bar.md`) and let one worker burn through them — usually faster than coordinating many.
+
+### How does OwlRun handle Claude Code rate limits?
+
+Every CLI invocation is wrapped in a retry loop. If the output matches `rate limit`, `429`, `503`, `529`, `quota`, `overloaded`, or various timeout / connection patterns, OwlRun parses the wait hint (`retry-after: N`, ISO reset timestamp, "try again in 5 minutes", future unix timestamp) and sleeps for that long — falling back to `OWLRUN_RETRY_INTERVAL` (default 1800 s = 30 min) if no hint is present. After `OWLRUN_MAX_RETRIES` attempts the task is marked `DONE_FAILED`. Pattern list lives in `src/cli.ts:RETRYABLE_PATTERNS` if you need to extend it.
+
+### Can OwlRun run Codex tasks too?
+
+Yes — the pipeline runs **Claude Code execution** + **Claude Code review** + **Codex review** for every task. Codex is the second opinion on the diff. Both CLIs need to be installed (`owlrun req`) and authenticated (`claude`, `codex login`). If you only have Claude installed, the Codex review step fails and the task is marked `DONE_FAILED` — there's no Codex-only mode today.
+
+### How do I queue Claude Code tasks?
+
+Two ways:
+
+1. **Web UI** — open `http://localhost:8090`, click `+ New instruction`, write Markdown, save.
+2. **API** — `curl -X POST http://localhost:8090/api/instructions -H 'content-type: application/json' -d '{"filename":"task-001.md","content":"# Refactor X to Y"}'`
+
+The next WAITING task alphabetically is picked up within `OWLRUN_POLL_INTERVAL_MS` (default 2 s).
+
+### How is OwlRun different from a CI/CD pipeline?
+
+CI runs on push events, parallelizes across runners, and is meant for tests. OwlRun runs an **interactive coding agent** sequentially against an **always-checked-out repo**, with retries tuned for AI-API quirks (rate limits, overloads, hour-long backoffs). Think of it as cron-meets-Claude rather than GitHub Actions: one machine, one repo, your queue of "things you want done".
+
+### How do I know if my Claude Code or Codex CLI is authenticated?
+
+```sh
+owlrun doctor
+```
+
+Doctor calls `claude auth status` and `codex login status` — both are local lookups, no API call, free. You'll see something like `✓ claude 2.1.104 (you@example.com, team)` when authed, or `✗ claude 2.1.104 — not logged in (run \`claude\` or \`claude setup-token\`)` when not.
+
+### Can I see what Claude Code is doing right now?
+
+```sh
+owlrun status              # one-line worker state + queue
+owlrun logs -f             # follow the live log
+owlrun health              # full snapshot
+```
+
+Or open the web UI — the task list shows a **stage** column that updates live for the RUNNING task (`claude-exec: run 1/1` → `moving-to-done` → `claude-review: collecting diff` → `codex-review`).
+
+### Is OwlRun affiliated with Anthropic or OpenAI?
+
+No. OwlRun is an independent open-source tool that integrates with the official Claude Code and Codex CLIs. See [Trademarks](#trademarks).
+
+---
+
+## Trademarks
+
+"Anthropic", "Claude" and "Claude Code" are trademarks of Anthropic PBC. "OpenAI" and "Codex" are trademarks of OpenAI. OwlRun is an independent project and is **not affiliated with, endorsed by, or sponsored by** Anthropic or OpenAI. Names are used here in their nominative sense to describe compatibility and integration.
 
 ---
 
