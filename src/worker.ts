@@ -1,15 +1,15 @@
-import { config } from "./config.ts";
-import { createLogger } from "./logger.ts";
-import { sleep } from "./cli.ts";
+import { config } from "./config.js";
+import { createLogger } from "./logger.js";
+import { sleep } from "./cli.js";
 import {
   claimForRun,
   getTask,
   pickNextWaiting,
   reconcile,
   type TaskStatus,
-} from "./store.ts";
-import { runPipeline } from "./pipeline.ts";
-import { isShuttingDown } from "./shutdown.ts";
+} from "./store.js";
+import { runPipeline } from "./pipeline.js";
+import { isShuttingDown } from "./shutdown.js";
 
 const log = createLogger("worker");
 

@@ -1,5 +1,6 @@
-import { config } from "./config.ts";
-import { createLogger } from "./logger.ts";
+import { config } from "./config.js";
+import { createLogger } from "./logger.js";
+import { runProcess, which, sleepMs } from "./runtime.js";
 
 const log = createLogger("cli");
 
@@ -27,54 +28,29 @@ export async function spawnProcess(opts: SpawnOptions): Promise<SpawnResult> {
 
   log.info("spawn", { cmd: opts.cmd[0], args: opts.cmd.slice(1), cwd: opts.cwd });
 
-  const proc = Bun.spawn({
+  const r = await runProcess({
     cmd: opts.cmd,
     cwd: opts.cwd,
     env,
-    stdin: opts.stdin !== undefined ? "pipe" : "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
+    stdin: opts.stdin,
+    timeoutMs: opts.timeoutMs,
   });
-
-  if (opts.stdin !== undefined && proc.stdin) {
-    proc.stdin.write(opts.stdin);
-    proc.stdin.end();
-  }
-
-  let timedOut = false;
-  const killTimer = opts.timeoutMs
-    ? setTimeout(() => {
-        timedOut = true;
-        try {
-          proc.kill();
-        } catch (e) {
-          log.warn("kill failed", { err: String(e) });
-        }
-      }, opts.timeoutMs)
-    : null;
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (killTimer) clearTimeout(killTimer);
 
   const durationMs = Date.now() - start;
   log.info("spawn exit", {
     cmd: opts.cmd[0],
-    exitCode,
+    exitCode: r.exitCode,
     durationMs,
-    stdoutBytes: stdout.length,
-    stderrBytes: stderr.length,
-    timedOut,
+    stdoutBytes: r.stdout.length,
+    stderrBytes: r.stderr.length,
+    timedOut: r.timedOut,
   });
 
-  return { exitCode: exitCode ?? 1, stdout, stderr, durationMs, timedOut };
+  return { ...r, durationMs };
 }
 
 export async function isRunnable(binary: string): Promise<{ ok: boolean; version: string | null; error: string | null }> {
-  if (!Bun.which(binary)) return { ok: false, version: null, error: "not installed" };
+  if (!which(binary)) return { ok: false, version: null, error: "not installed" };
   try {
     const r = await spawnProcess({ cmd: [binary, "--version"], timeoutMs: 15_000 });
     if (r.exitCode === 0) {

@@ -1,44 +1,53 @@
 {
   "name": "owlrun",
   "version": "0.1.0",
-  "description": "Persistent local runner for Claude/Codex instruction files with a web portal",
+  "description": "Persistent local runner for Claude Code / Codex instruction files with a web portal",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/src/index.js",
   "bin": {
-    "owlrun": "bin/owlrun.ts"
+    "owlrun": "dist/bin/owlrun.js"
   },
   "files": [
-    "bin",
-    "src",
+    "dist",
     "public",
-    "deploy",
-    "scripts/build-release.sh",
-    "install.sh",
+    "deploy/owlrun.service",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "start": "bun run src/index.ts",
-    "dev": "bun --hot run src/index.ts",
-    "typecheck": "bunx tsc --noEmit",
-    "owlrun": "bun run bin/owlrun.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/src/index.js",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "typecheck": "tsc --noEmit",
+    "owlrun": "node dist/bin/owlrun.js",
+    "prepublishOnly": "npm run build",
     "release": "bash scripts/build-release.sh"
   },
   "keywords": [
     "claude",
+    "claude-code",
     "codex",
-    "cli",
     "ai",
     "automation",
+    "agent",
+    "cli",
     "worker",
-    "bun"
+    "queue"
   ],
   "license": "MIT",
   "engines": {
-    "bun": ">=1.1.0"
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YaminT/owlrunner.git"
+  },
+  "homepage": "https://github.com/YaminT/owlrunner",
+  "bugs": {
+    "url": "https://github.com/YaminT/owlrunner/issues"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/node": "^20.10.0",
     "typescript": "^5.4.0"
   }
 }

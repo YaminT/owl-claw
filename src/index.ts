@@ -1,10 +1,10 @@
-import { config } from "./config.ts";
-import { createLogger } from "./logger.ts";
-import { runServer } from "./server.ts";
-import { runWorker } from "./worker.ts";
-import { initStore } from "./store.ts";
-import { sleep } from "./cli.ts";
-import { isShuttingDown, requestShutdown } from "./shutdown.ts";
+import { config } from "./config.js";
+import { createLogger } from "./logger.js";
+import { runServer } from "./server.js";
+import { runWorker } from "./worker.js";
+import { initStore } from "./store.js";
+import { sleep } from "./cli.js";
+import { isShuttingDown, requestShutdown } from "./shutdown.js";
 
 const log = createLogger("app");
 
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
   installSignalHandlers();
   log.info(`${config.appName} starting`, {
     pid: process.pid,
-    bun: typeof Bun !== "undefined" ? Bun.version : "unknown",
+    node: process.versions.node,
     port: config.webPort,
     instructionsDir: config.instructionsDir,
     frontendDir: config.frontendDir,

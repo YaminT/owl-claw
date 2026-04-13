@@ -1,8 +1,8 @@
 import { readdir, mkdir, readFile, writeFile, rename, stat, unlink } from "node:fs/promises";
 import { join, basename, resolve } from "node:path";
 import { existsSync } from "node:fs";
-import { config } from "./config.ts";
-import { createLogger } from "./logger.ts";
+import { config } from "./config.js";
+import { createLogger } from "./logger.js";
 
 const log = createLogger("store");
 

@@ -1,10 +1,13 @@
-import { resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { resolve, dirname, extname } from "node:path";
+import { existsSync, createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { config } from "./config.ts";
-import { createLogger, recentLogs } from "./logger.ts";
-import { isRunnable } from "./cli.ts";
-import { getWorkerStatus } from "./worker.ts";
+import { fileURLToPath } from "node:url";
+import { createServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from "node:http";
+import { Readable } from "node:stream";
+import { config } from "./config.js";
+import { createLogger, recentLogs } from "./logger.js";
+import { isRunnable } from "./cli.js";
+import { getWorkerStatus } from "./worker.js";
 import {
   createTask,
   deleteTask,
@@ -14,8 +17,8 @@ import {
   requeue,
   sanitizeFilename,
   updateTaskContent,
-} from "./store.ts";
-import { waitForShutdown } from "./shutdown.ts";
+} from "./store.js";
+import { waitForShutdown } from "./shutdown.js";
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
 const TOOL_CHECK_TTL_MS = 60_000;
@@ -35,7 +38,24 @@ async function cachedIsRunnable(binary: string): Promise<ToolCheck> {
 
 const log = createLogger("server");
 
-const publicDir = resolve(import.meta.dir, "..", "public");
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const publicDir = resolve(__dirname, "..", "..", "public");
+
+const STATIC_MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".webp": "image/webp",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+};
 
 function json(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -62,7 +82,17 @@ async function serveStatic(pathname: string): Promise<Response> {
   if (!existsSync(target)) return err(404, "not found");
   const s = await stat(target);
   if (s.isDirectory()) return err(404, "not found");
-  return new Response(Bun.file(target), { headers: { "cache-control": "no-cache" } });
+  const ext = extname(target).toLowerCase();
+  const type = STATIC_MIME[ext] ?? "application/octet-stream";
+  // Stream the file via Node's createReadStream → Web ReadableStream.
+  const stream = Readable.toWeb(createReadStream(target)) as ReadableStream<Uint8Array>;
+  return new Response(stream, {
+    headers: {
+      "content-type": type,
+      "content-length": String(s.size),
+      "cache-control": "no-cache",
+    },
+  });
 }
 
 async function handleApi(req: Request, url: URL): Promise<Response> {
@@ -216,39 +246,83 @@ async function safeJson(req: Request): Promise<unknown | "too_large" | null> {
   }
 }
 
+/**
+ * Adapt a Node IncomingMessage into a fetch Request so the rest of the code
+ * can stay framework-free. Body is buffered for non-GET/HEAD methods so the
+ * handler can call req.text() / req.json().
+ */
+async function nodeReqToFetch(req: IncomingMessage): Promise<Request> {
+  const host = req.headers.host ?? `${config.host}:${config.webPort}`;
+  const url = `http://${host}${req.url ?? "/"}`;
+  const method = (req.method ?? "GET").toUpperCase();
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (v == null) continue;
+    headers.set(k, Array.isArray(v) ? v.join(", ") : String(v));
+  }
+  let body: BodyInit | undefined;
+  if (method !== "GET" && method !== "HEAD") {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    body = Buffer.concat(chunks);
+  }
+  return new Request(url, { method, headers, body, duplex: "half" } as RequestInit & { duplex: string });
+}
+
+async function fetchRespToNode(response: Response, res: ServerResponse): Promise<void> {
+  res.statusCode = response.status;
+  response.headers.forEach((v, k) => res.setHeader(k, v));
+  if (response.body) {
+    const reader = response.body.getReader();
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) res.write(value);
+    }
+  }
+  res.end();
+}
+
 export async function runServer(): Promise<void> {
-  const server = Bun.serve({
-    port: config.webPort,
-    hostname: config.host,
-    idleTimeout: 255,
-    development: false,
-    fetch: async (req) => {
-      const url = new URL(req.url);
+  const server: HttpServer = createServer(async (req, res) => {
+    const startUrl = req.url ?? "/";
+    try {
+      const request = await nodeReqToFetch(req);
+      const url = new URL(request.url);
+      const response = url.pathname.startsWith("/api/")
+        ? await handleApi(request, url)
+        : await serveStatic(url.pathname);
+      await fetchRespToNode(response, res);
+    } catch (e) {
+      log.error("request failed", { url: startUrl, err: String(e) });
       try {
-        if (url.pathname.startsWith("/api/")) {
-          return await handleApi(req, url);
-        }
-        return await serveStatic(url.pathname);
-      } catch (e) {
-        log.error("request failed", { url: url.pathname, err: String(e) });
-        return err(500, "internal server error");
-      }
-    },
-    error: (e) => {
-      log.error("server error", { err: String(e) });
-      return err(500, "internal server error");
-    },
+        res.statusCode = 500;
+        res.setHeader("content-type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ error: "internal server error" }));
+      } catch {}
+    }
+  });
+
+  // 255s matches the previous Bun.serve idleTimeout.
+  server.keepAliveTimeout = 255_000;
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(config.webPort, config.host, () => {
+      server.removeListener("error", reject);
+      resolve();
+    });
   });
 
   log.info("web server listening", {
-    url: `http://${config.host}:${server.port}`,
+    url: `http://${config.host}:${config.webPort}`,
   });
 
   await waitForShutdown();
   log.info("web server stopping");
-  try {
-    server.stop(true);
-  } catch (e) {
-    log.warn("server.stop failed", { err: String(e) });
-  }
+  await new Promise<void>((resolve) => {
+    server.close(() => resolve());
+    // Force-close any keep-alive sockets so we exit promptly.
+    server.closeAllConnections?.();
+  });
 }

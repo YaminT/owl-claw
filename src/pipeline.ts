@@ -1,16 +1,16 @@
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { config } from "./config.ts";
-import { createLogger } from "./logger.ts";
-import { runWithRetry, spawnProcess } from "./cli.ts";
+import { config } from "./config.js";
+import { createLogger } from "./logger.js";
+import { runWithRetry, spawnProcess } from "./cli.js";
 import {
   bumpRetry,
   finalize,
   moveToDone,
   updateStage,
   type TaskView,
-} from "./store.ts";
+} from "./store.js";
 
 const log = createLogger("pipeline");
 

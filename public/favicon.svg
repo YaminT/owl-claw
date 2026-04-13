@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="geometricPrecision">
+  <!-- Brows -->
+  <path d="M2 11 L13 7 L13 14 Z" fill="#1e3a8a"/>
+  <path d="M30 11 L19 7 L19 14 Z" fill="#1e3a8a"/>
+  <!-- Eye whites (orange ring) -->
+  <circle cx="10" cy="19" r="6" fill="#f59e0b"/>
+  <circle cx="22" cy="19" r="6" fill="#f59e0b"/>
+  <!-- Pupils -->
+  <circle cx="10" cy="19" r="2.6" fill="#0f172a"/>
+  <circle cx="22" cy="19" r="2.6" fill="#0f172a"/>
+  <!-- Highlight -->
+  <circle cx="11.2" cy="17.8" r="0.9" fill="#fff"/>
+  <circle cx="23.2" cy="17.8" r="0.9" fill="#fff"/>
+  <!-- Beak -->
+  <path d="M14 25 L16 29 L18 25 Z" fill="#1e3a8a"/>
+</svg>

@@ -1,8 +1,10 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { resolve, join, dirname } from "node:path";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { arch as osArch, homedir } from "node:os";
+import { spawn as nodeSpawn } from "node:child_process";
+import { runProcess, which as runtimeWhich, sleepMs } from "../src/runtime.js";
 
 // Resolve the OwlRun project root from this script's location. Walk up until
 // we find a package.json whose name matches.
@@ -62,20 +64,30 @@ type Handler = (args: string[]) => Promise<CommandResult | void> | CommandResult
 /* ---------- helpers ---------- */
 
 async function run(cmd: string[], opts: { allowFail?: boolean } = {}): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn({ cmd, stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (!opts.allowFail && exitCode !== 0) {
-    throw new Error(`${cmd[0]} exited ${exitCode}: ${stderr.trim() || stdout.trim()}`);
+  const r = await runProcess({ cmd });
+  if (!opts.allowFail && r.exitCode !== 0) {
+    throw new Error(`${cmd[0]} exited ${r.exitCode}: ${r.stderr.trim() || r.stdout.trim()}`);
   }
-  return { exitCode: exitCode ?? 1, stdout, stderr };
+  return { exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr };
 }
 
 function which(bin: string): string | null {
-  try { return Bun.which(bin); } catch { return null; }
+  return runtimeWhich(bin);
+}
+
+/**
+ * Spawn an interactive child process with all stdio inherited (so input is
+ * read from the user's terminal and output streams straight through).
+ * Resolves with the exit code.
+ */
+function runInherit(cmd: string[], opts: { stdin?: "inherit" | "ignore" } = {}): Promise<number> {
+  return new Promise((resolve) => {
+    const proc = nodeSpawn(cmd[0]!, cmd.slice(1), {
+      stdio: [opts.stdin ?? "inherit", "inherit", "inherit"],
+    });
+    proc.on("close", (code) => resolve(code ?? 0));
+    proc.on("error", () => resolve(127));
+  });
 }
 
 async function fetchJson<T = unknown>(path: string): Promise<T> {
@@ -122,14 +134,9 @@ async function systemctl(action: string): Promise<{ ok: boolean; message: string
   const cmd = isRoot
     ? ["systemctl", action, "owlrun"]
     : ["sudo", "-p", "[sudo] password to control owlrun.service: ", "systemctl", action, "owlrun"];
-  const proc = Bun.spawn({ cmd, stdin: "inherit", stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if ((exitCode ?? 1) === 0) return { ok: true, message: stdout.trim() };
-  let msg = (stderr || stdout).trim() || `systemctl ${action} owlrun failed (exit ${exitCode})`;
+  const r = await runProcess({ cmd, stdin: "inherit" });
+  if (r.exitCode === 0) return { ok: true, message: r.stdout.trim() };
+  let msg = (r.stderr || r.stdout).trim() || `systemctl ${action} owlrun failed (exit ${r.exitCode})`;
   // Make the no-tty failure actionable instead of cryptic.
   if (msg.includes("a terminal is required") || msg.includes("no askpass")) {
     msg = `sudo cannot prompt for a password from this shell. Run interactively or:\n  sudo systemctl ${action} owlrun`;
@@ -152,7 +159,7 @@ function printUsage(): void {
 ${fmt.head("Usage:")}  owlrun <command> [options]
 
 ${fmt.head("Commands:")}
-  ${c.cyan}doctor${c.reset}                  Check environment (bun, claude, codex, git, paths, supervisor)
+  ${c.cyan}doctor${c.reset}                  Check environment (node, claude, codex, git, paths, supervisor)
   ${c.cyan}req${c.reset} [--yes] [tools]     Install missing requirements (claude, codex)
   ${c.cyan}start${c.reset} [--tmux|--systemd] Start OwlRun (auto-detects supervisor; flags force one)
   ${c.cyan}stop${c.reset}  [--tmux|--systemd] Stop the running instance
@@ -192,13 +199,8 @@ interface AuthResult { authed: boolean; detail: string }
  */
 async function checkClaudeAuth(): Promise<AuthResult> {
   try {
-    const r = await Bun.spawn({ cmd: ["claude", "auth", "status"], stdout: "pipe", stderr: "pipe" });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(r.stdout).text(),
-      new Response(r.stderr).text(),
-      r.exited,
-    ]);
-    const body = stdout.trim() || stderr.trim();
+    const r = await runProcess({ cmd: ["claude", "auth", "status"], timeoutMs: 10_000 });
+    const body = r.stdout.trim() || r.stderr.trim();
     try {
       const data = JSON.parse(body) as { loggedIn?: boolean; email?: string; authMethod?: string; subscriptionType?: string };
       if (data.loggedIn) {
@@ -208,7 +210,7 @@ async function checkClaudeAuth(): Promise<AuthResult> {
       }
       return { authed: false, detail: "not logged in" };
     } catch {
-      const ok = (exitCode ?? 1) === 0;
+      const ok = r.exitCode === 0;
       return { authed: ok, detail: ok ? "" : "not logged in" };
     }
   } catch {
@@ -223,14 +225,9 @@ async function checkClaudeAuth(): Promise<AuthResult> {
 async function checkCodexAuth(): Promise<AuthResult> {
   try {
     // codex writes "Logged in using <method>" to stderr, not stdout.
-    const r = await Bun.spawn({ cmd: ["codex", "login", "status"], stdout: "pipe", stderr: "pipe" });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(r.stdout).text(),
-      new Response(r.stderr).text(),
-      r.exited,
-    ]);
-    const combined = `${stdout}\n${stderr}`;
-    if ((exitCode ?? 1) === 0) {
+    const r = await runProcess({ cmd: ["codex", "login", "status"], timeoutMs: 10_000 });
+    const combined = `${r.stdout}\n${r.stderr}`;
+    if (r.exitCode === 0) {
       const m = combined.match(/Logged in(?:\s+using\s+([^\n]+))?/i);
       const who = m?.[1]?.trim();
       return { authed: true, detail: who ? ` (${who})` : "" };
@@ -259,13 +256,10 @@ async function cmdDoctor(): Promise<CommandResult> {
     runtimeInstructions = h.config.instructionsDir;
   } catch { /* server not running -- fall back to env/defaults */ }
 
-  // Bun
-  const bunPath = which("bun");
-  if (bunPath) {
-    const v = (await run(["bun", "--version"])).stdout.trim();
-    console.log(fmt.ok(`bun ${v} ${fmt.dim("at " + bunPath)}`));
-  } else {
-    console.log(fmt.err("bun — not found on $PATH"));
+  // Node
+  console.log(fmt.ok(`node ${process.versions.node} ${fmt.dim("at " + process.execPath)}`));
+  if (Number.parseInt(process.versions.node.split(".")[0]!, 10) < 20) {
+    console.log(fmt.err("  node 20+ required (uses global fetch / Response / ReadableStream)"));
     errors++;
   }
 
@@ -390,7 +384,7 @@ async function waitForPort(timeoutMs = 5000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await isPortListening()) return true;
-    await Bun.sleep(500);
+    await sleepMs(500);
   }
   return false;
 }
@@ -412,7 +406,7 @@ async function cmdRestart(args: string[]): Promise<CommandResult> {
   if (sup === "systemd") return restartSystemd();
   const stop = await stopTmux();
   if (stop.exitCode !== 0) return stop;
-  await Bun.sleep(500);
+  await sleepMs(500);
   return await startTmux();
 }
 
@@ -469,9 +463,11 @@ async function startTmux(): Promise<CommandResult> {
     return { exitCode: 1 };
   }
 
-  const bunBin = which("bun");
-  if (!bunBin) {
-    console.error(fmt.err("bun not found on $PATH"));
+  const nodeBin = which("node") ?? process.execPath;
+  const serverEntry = join(PROJECT_ROOT, "dist", "src", "index.js");
+  if (!existsSync(serverEntry)) {
+    console.error(fmt.err(`server entry not found at ${serverEntry}`));
+    console.error(fmt.dim("(if you're running from a checkout, run `npm run build` first)"));
     return { exitCode: 1 };
   }
 
@@ -482,7 +478,7 @@ async function startTmux(): Promise<CommandResult> {
     .map(([k, v]) => `${k}=${shellQuote(v ?? "")}`)
     .join(" ");
 
-  const cmd = `cd ${shellQuote(PROJECT_ROOT)} && ${envLine} ${shellQuote(bunBin)} run src/index.ts 2>&1 | tee ${shellQuote(LOG_FILE)}`;
+  const cmd = `cd ${shellQuote(PROJECT_ROOT)} && ${envLine} ${shellQuote(nodeBin)} ${shellQuote(serverEntry)} 2>&1 | tee ${shellQuote(LOG_FILE)}`;
   const r = await run(["tmux", "new-session", "-d", "-s", TMUX_SESSION, cmd], { allowFail: true });
   if (r.exitCode !== 0) {
     console.error(fmt.err(`tmux new-session failed: ${r.stderr.trim()}`));
@@ -619,8 +615,7 @@ async function cmdLogs(args: string[]): Promise<CommandResult> {
     const cmd = follow
       ? ["journalctl", "-u", "owlrun", "-n", String(lines), "-f"]
       : ["journalctl", "-u", "owlrun", "-n", String(lines), "--no-pager"];
-    const proc = Bun.spawn({ cmd, stdin: "inherit", stdout: "inherit", stderr: "inherit" });
-    return { exitCode: (await proc.exited) ?? 0 };
+    return { exitCode: await runInherit(cmd) };
   }
 
   if (!existsSync(LOG_FILE)) {
@@ -631,8 +626,7 @@ async function cmdLogs(args: string[]): Promise<CommandResult> {
   const cmd = follow
     ? ["tail", "-n", String(lines), "-f", LOG_FILE]
     : ["tail", "-n", String(lines), LOG_FILE];
-  const proc = Bun.spawn({ cmd, stdout: "inherit", stderr: "inherit" });
-  return { exitCode: (await proc.exited) ?? 0 };
+  return { exitCode: await runInherit(cmd, { stdin: "ignore" }) };
 }
 
 async function cmdAttach(args: string[]): Promise<CommandResult> {
@@ -652,8 +646,7 @@ async function cmdAttach(args: string[]): Promise<CommandResult> {
     console.error(fmt.err(`tmux session "${TMUX_SESSION}" is not running`));
     return { exitCode: 1 };
   }
-  const proc = Bun.spawn({ cmd: ["tmux", "attach", "-t", TMUX_SESSION], stdin: "inherit", stdout: "inherit", stderr: "inherit" });
-  return { exitCode: (await proc.exited) ?? 0 };
+  return { exitCode: await runInherit(["tmux", "attach", "-t", TMUX_SESSION]) };
 }
 
 async function cmdOpen(): Promise<CommandResult> {
@@ -672,22 +665,31 @@ function cmdVersion(): CommandResult {
 
 /* ---------- uninstall ---------- */
 
-async function cmdUninstall(args: string[]): Promise<CommandResult> {
-  const installer = join(PROJECT_ROOT, "install.sh");
-  if (!existsSync(installer)) {
-    console.error(fmt.err(`installer not found at ${installer}`));
-    console.error(fmt.dim("(this OwlRun was not installed via install.sh; remove the source tree manually)"));
-    return { exitCode: 1 };
-  }
+/**
+ * npm-installed packages live somewhere ending with /node_modules/owlrun.
+ * Detecting this path tells us to delegate the source-tree removal to npm
+ * itself instead of trying to rm -rf it (npm tracks the symlink + bin).
+ */
+function isNpmInstalled(): boolean {
+  return PROJECT_ROOT.includes(`${require("node:path").sep}node_modules${require("node:path").sep}owlrun`)
+      || PROJECT_ROOT.endsWith(`/node_modules/owlrun`);
+}
 
+async function cmdUninstall(args: string[]): Promise<CommandResult> {
   const yes = args.includes("--yes") || args.includes("-y");
   const purge = args.includes("--purge");
-
-  console.log(fmt.head("This will remove:"));
-  console.log(`  - source tree: ${fmt.dim(PROJECT_ROOT)}`);
-  console.log(`  - wrapper script (owlrun)`);
+  const npmInstalled = isNpmInstalled();
   const unit = systemdUnitInstalled();
-  if (unit) console.log(`  - systemd unit: ${fmt.dim(unit)}`);
+
+  console.log(fmt.head("This will:"));
+  if (npmInstalled) {
+    console.log(`  - stop the running instance`);
+    console.log(`  - print the command to remove the npm package itself`);
+  } else {
+    console.log(`  - source tree: ${fmt.dim(PROJECT_ROOT)}`);
+    console.log(`  - wrapper script (owlrun)`);
+    if (unit) console.log(`  - systemd unit: ${fmt.dim(unit)}`);
+  }
   if (purge) console.log(`  - ${fmt.dim("user data:")} ${expandHome("~/.owlrun")} ${fmt.dim("(--purge)")}`);
   else console.log(`  ${fmt.dim("(user data in ~/.owlrun/ is kept; pass --purge to remove it too)")}`);
   console.log();
@@ -706,17 +708,35 @@ async function cmdUninstall(args: string[]): Promise<CommandResult> {
     }
   }
 
-  // Need root if the install lives under /opt or /usr or there is a systemd unit.
-  const needsSudo = PROJECT_ROOT.startsWith("/opt") || PROJECT_ROOT.startsWith("/usr") || unit !== null;
-  const isRoot = process.getuid?.() === 0;
-  const cmd = (needsSudo && !isRoot)
-    ? ["sudo", "-p", "[sudo] password to uninstall OwlRun: ", "bash", installer, "--uninstall"]
-    : ["bash", installer, "--uninstall"];
+  let exitCode = 0;
+  if (npmInstalled) {
+    console.log();
+    console.log(fmt.head("To remove the OwlRun package, run:"));
+    console.log(`  npm uninstall -g owlrun`);
+    console.log();
+    if (unit) {
+      console.log(fmt.warn("A systemd unit is also installed. To remove it:"));
+      console.log(`  sudo systemctl disable --now owlrun`);
+      console.log(`  sudo rm /etc/systemd/system/owlrun.service`);
+      console.log(`  sudo systemctl daemon-reload`);
+      console.log();
+    }
+  } else {
+    // Legacy install.sh path
+    const installer = join(PROJECT_ROOT, "install.sh");
+    if (!existsSync(installer)) {
+      console.error(fmt.err(`installer not found at ${installer}`));
+      return { exitCode: 1 };
+    }
+    const needsSudo = PROJECT_ROOT.startsWith("/opt") || PROJECT_ROOT.startsWith("/usr") || unit !== null;
+    const isRoot = process.getuid?.() === 0;
+    const cmd = (needsSudo && !isRoot)
+      ? ["sudo", "-p", "[sudo] password to uninstall OwlRun: ", "bash", installer, "--uninstall"]
+      : ["bash", installer, "--uninstall"];
+    exitCode = await runInherit(cmd);
+  }
 
-  const proc = Bun.spawn({ cmd, stdin: "inherit", stdout: "inherit", stderr: "inherit" });
-  const exitCode = (await proc.exited) ?? 1;
-
-  if (exitCode === 0 && purge) {
+  if (purge) {
     const userHome = expandHome("~/.owlrun");
     const logFile = expandHome("~/owlrun.log");
     if (existsSync(userHome)) {
@@ -772,12 +792,10 @@ async function installClaude(): Promise<{ ok: boolean; message: string }> {
   // The official installer is idempotent. It detects the right arch and
   // writes to $HOME/.local/bin/claude (or similar).
   console.log(fmt.dim("Running Claude Code installer…"));
-  const proc = Bun.spawn({
-    cmd: ["bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"],
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  const exitCode = (await proc.exited) ?? 1;
+  const exitCode = await runInherit(
+    ["bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"],
+    { stdin: "ignore" },
+  );
   if (exitCode !== 0) return { ok: false, message: `installer exited with code ${exitCode}` };
   const found = which("claude") ?? (existsSync(expandHome("~/.local/bin/claude")) ? expandHome("~/.local/bin/claude") : null);
   if (!found) return { ok: false, message: "installer finished but `claude` is still not on $PATH" };
@@ -815,7 +833,7 @@ async function installCodex(): Promise<{ ok: boolean; message: string }> {
 
   await run(["install", "-m", "755", binary, join(binDir, "codex")]);
   await run(["rm", "-rf", tmpDir], { allowFail: true });
-  const found = Bun.which("codex") ?? join(binDir, "codex");
+  const found = which("codex") ?? join(binDir, "codex");
   if (!existsSync(found)) return { ok: false, message: "post-install: codex not found" };
   return { ok: true, message: `codex installed at ${found}` };
 }
