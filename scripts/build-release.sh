@@ -45,17 +45,30 @@ for p in bin src public deploy scripts install.sh package.json tsconfig.json REA
   fi
 done
 
-echo ">>> packaging $TAR_PATH"
-# COPYFILE_DISABLE avoids macOS AppleDouble "._*" metadata inside the tarball,
+echo ">>> packaging tarball"
+# COPYFILE_DISABLE avoids macOS AppleDouble "._*" metadata inside the archive,
 # which otherwise confuses GNU tar on Linux.
 ( cd "$STAGE" && COPYFILE_DISABLE=1 tar --owner=0 --group=0 --numeric-owner -czf "$TAR_PATH" "$NAME" )
+TAR_SHA="$(shasum -a 256 "$TAR_PATH" | cut -d' ' -f1)"
+echo "$TAR_SHA  $NAME.tar.gz" > "$OUT_DIR/$NAME.tar.gz.sha256"
 
-SHA="$(shasum -a 256 "$TAR_PATH" | cut -d' ' -f1)"
-echo "$SHA  $NAME.tar.gz" > "$OUT_DIR/$NAME.tar.gz.sha256"
+echo ">>> packaging zip"
+ZIP_PATH="$OUT_DIR/$NAME.zip"
+rm -f "$ZIP_PATH"
+# zip -r preserves unix file modes by default. -X strips extra attributes
+# (uid/gid, system-specific) so the archive is reproducible across machines.
+( cd "$STAGE" && COPYFILE_DISABLE=1 zip -r -X -q "$ZIP_PATH" "$NAME" )
+ZIP_SHA="$(shasum -a 256 "$ZIP_PATH" | cut -d' ' -f1)"
+echo "$ZIP_SHA  $NAME.zip" > "$OUT_DIR/$NAME.zip.sha256"
 
 echo
 echo "✓ $TAR_PATH"
-echo "  sha256: $SHA"
+echo "  sha256: $TAR_SHA"
 echo "  size:   $(du -h "$TAR_PATH" | cut -f1)"
 echo
-echo "Test: tar -tzf $TAR_PATH | head"
+echo "✓ $ZIP_PATH"
+echo "  sha256: $ZIP_SHA"
+echo "  size:   $(du -h "$ZIP_PATH" | cut -f1)"
+echo
+echo "Inspect: tar -tzf $TAR_PATH | head"
+echo "         unzip -l $ZIP_PATH | head"
