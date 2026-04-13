@@ -66,15 +66,19 @@ WRAPPER="$BIN_DIR/owlrun"
 # --- uninstall path ------------------------------------------------------
 if [ "$UNINSTALL" -eq 1 ]; then
   head "Uninstalling OwlRun"
-  # Always check both user and system locations — the user may have either
-  # or both, and asking them to remember which is unhelpful.
-  CANDIDATES=()
-  for prefix in "/opt/owlrun" "$HOME/.local/share/owlrun"; do
-    [ -d "$prefix" ] && CANDIDATES+=("$prefix")
-  done
-  for wrapper in "/usr/local/bin/owlrun" "$HOME/.local/bin/owlrun"; do
-    [ -e "$wrapper" ] && CANDIDATES+=("$wrapper")
-  done
+
+  # Stop any running instance first. If we leave a bun process alive while
+  # removing the source tree, it keeps the port bound (and its now-orphaned
+  # source loaded in memory) until it eventually crashes or is killed.
+  if command -v tmux >/dev/null 2>&1 && tmux has-session -t owlrun 2>/dev/null; then
+    tmux kill-session -t owlrun 2>/dev/null && ok "stopped tmux session owlrun" || true
+  fi
+  # Belt-and-suspenders: kill anything still bound to the OwlRun port.
+  if command -v fuser >/dev/null 2>&1; then
+    if fuser -k "${OWLRUN_PORT:-8090}/tcp" 2>/dev/null; then
+      ok "freed port ${OWLRUN_PORT:-8090}"
+    fi
+  fi
 
   if [ -f /etc/systemd/system/owlrun.service ] && command -v systemctl >/dev/null 2>&1; then
     if [ "$(id -u)" -eq 0 ]; then
