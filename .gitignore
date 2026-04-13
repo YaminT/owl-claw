@@ -1,0 +1,21 @@
+# Build outputs
+dist/
+node_modules/
+
+# Logs
+*.log
+
+# OS / editor cruft
+.DS_Store
+.idea/
+.vscode/
+
+# Local env / secrets
+.env
+.env.*
+
+# Runtime state
+instructions/
+
+# Project planning notes (not source)
+claude.md
