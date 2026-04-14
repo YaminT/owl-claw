@@ -7,7 +7,7 @@ const LEVEL_ORDER: Record<Level, number> = {
   error: 40,
 };
 
-const MIN_LEVEL: Level = (process.env.OWLRUN_LOG_LEVEL as Level) ?? "info";
+const MIN_LEVEL: Level = (process.env.OWLCLAW_LOG_LEVEL as Level) ?? "info";
 
 interface LogEvent {
   t: string;

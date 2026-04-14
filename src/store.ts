@@ -30,7 +30,7 @@ interface StateFile {
   tasks: Record<string, TaskRecord>;
 }
 
-const STATE_FILENAME = ".owlrun-state.json";
+const STATE_FILENAME = ".owl-claw-state.json";
 
 function statePath(): string {
   return join(config.instructionsDir, STATE_FILENAME);

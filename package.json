@@ -1,11 +1,13 @@
 {
-  "name": "owlrun",
+  "name": "owl-claw",
   "version": "0.1.0",
-  "description": "Persistent local runner for Claude/Codex instruction files with a web portal",
+  "description": "OwlClaw — a persistent, self-healing task runner for Claude Code and Codex. Queue Markdown instructions, owl runs them.",
   "type": "module",
   "main": "src/index.ts",
   "bin": {
-    "owlrun": "bin/owlrun.ts"
+    "owl-claw": "bin/owl-claw.ts",
+    "owlclaw": "bin/owl-claw.ts",
+    "owl": "bin/owl-claw.ts"
   },
   "files": [
     "bin",
@@ -21,21 +23,32 @@
     "start": "bun run src/index.ts",
     "dev": "bun --hot run src/index.ts",
     "typecheck": "bunx tsc --noEmit",
-    "owlrun": "bun run bin/owlrun.ts",
+    "owl-claw": "bun run bin/owl-claw.ts",
     "release": "bash scripts/build-release.sh"
   },
   "keywords": [
     "claude",
+    "claude-code",
     "codex",
-    "cli",
     "ai",
     "automation",
+    "agent",
+    "cli",
     "worker",
-    "bun"
+    "queue"
   ],
+  "author": "Yamin Tashakkori",
   "license": "MIT",
   "engines": {
     "bun": ">=1.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YaminT/owl-claw.git"
+  },
+  "homepage": "https://github.com/YaminT/owl-claw",
+  "bugs": {
+    "url": "https://github.com/YaminT/owl-claw/issues"
   },
   "devDependencies": {
     "@types/bun": "latest",

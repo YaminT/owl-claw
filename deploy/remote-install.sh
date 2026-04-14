@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# OwlRun remote install / redeploy script.
+# OwlClaw remote install / redeploy script.
 #
 # Usage (from a workstation that has this repo checked out and SSH access):
 #   ./deploy/remote-install.sh [user@host]
@@ -9,23 +9,23 @@
 #
 # What it does:
 #   1. Installs Bun into ~/.bun on the remote (no sudo required).
-#   2. Rsyncs this repo to ~/owlRun on the remote (excludes node_modules and local state).
+#   2. Rsyncs this repo to ~/owl-claw on the remote (excludes node_modules and local state).
 #   3. Runs `bun install` there.
-#   4. Creates ~/owlrun-ins and a placeholder git repo at ~/frontend-target (with CLAUDE.md).
-#   5. Starts OwlRun in a detached tmux session named `owlrun`, logging to ~/owlrun.log.
+#   4. Creates ~/owl-claw-ins and a placeholder git repo at ~/frontend-target (with CLAUDE.md).
+#   5. Starts OwlClaw in a detached tmux session named `owl-claw`, logging to ~/owl-claw.log.
 #
 # Tmux is the transient supervisor. For a persistent auto-restart install, see
-# deploy/owlrun.service and the "promote to systemd" section of deploy/README.md.
+# deploy/owl-claw.service and the "promote to systemd" section of deploy/README.md.
 
 set -euo pipefail
 
 TARGET="${1:-batman@49.13.25.232}"
 REMOTE_HOME_DEFAULT="/home/$(echo "$TARGET" | cut -d@ -f1)"
-REMOTE_HOME="${OWLRUN_REMOTE_HOME:-$REMOTE_HOME_DEFAULT}"
-REPO_DST="$REMOTE_HOME/owlRun"
-INS_DIR="$REMOTE_HOME/owlrun-ins"
+REMOTE_HOME="${OWLCLAW_REMOTE_HOME:-$REMOTE_HOME_DEFAULT}"
+REPO_DST="$REMOTE_HOME/owl-claw"
+INS_DIR="$REMOTE_HOME/owl-claw-ins"
 FRONTEND_DIR="$REMOTE_HOME/frontend-target"
-PORT="${OWLRUN_PORT:-8090}"
+PORT="${OWLCLAW_PORT:-8090}"
 
 echo ">>> deploying to $TARGET"
 echo ">>> repo -> $REPO_DST"
@@ -78,8 +78,8 @@ set -euo pipefail
 REPO="$1"
 cd "$REPO"
 "$HOME/.bun/bin/bun" install
-"$HOME/.bun/bin/bun" build src/index.ts --target=bun --outfile=/tmp/owlrun-build-check.js >/dev/null
-rm -f /tmp/owlrun-build-check.js
+"$HOME/.bun/bin/bun" build src/index.ts --target=bun --outfile=/tmp/owl-claw-build-check.js >/dev/null
+rm -f /tmp/owl-claw-build-check.js
 echo "bun install + build OK"
 REMOTE_INSTALL
 
@@ -99,7 +99,7 @@ if [ ! -f CLAUDE.md ]; then
   cat > CLAUDE.md <<'MD'
 # Frontend target (placeholder)
 
-Replace with the real frontend repo path when wiring OwlRun to an actual codebase.
+Replace with the real frontend repo path when wiring OwlClaw to an actual codebase.
 
 ## Conventions
 - Describe real conventions here once a real repo is wired in.
@@ -111,20 +111,20 @@ REMOTE_DIRS
 ssh "$TARGET" bash -s -- "$REPO_DST" "$INS_DIR" "$FRONTEND_DIR" "$PORT" <<'REMOTE_START'
 set -euo pipefail
 REPO="$1"; INS="$2"; FE="$3"; PORT="$4"
-tmux kill-session -t owlrun 2>/dev/null || true
-tmux new-session -d -s owlrun "cd $REPO && \
-  OWLRUN_INSTRUCTIONS_DIR=$INS \
-  OWLRUN_FRONTEND_DIR=$FE \
-  OWLRUN_PORT=$PORT \
-  OWLRUN_HOST=0.0.0.0 \
-  $HOME/.bun/bin/bun run src/index.ts 2>&1 | tee $HOME/owlrun.log"
+tmux kill-session -t owl-claw 2>/dev/null || true
+tmux new-session -d -s owl-claw "cd $REPO && \
+  OWLCLAW_INSTRUCTIONS_DIR=$INS \
+  OWLCLAW_FRONTEND_DIR=$FE \
+  OWLCLAW_PORT=$PORT \
+  OWLCLAW_HOST=0.0.0.0 \
+  $HOME/.bun/bin/bun run src/index.ts 2>&1 | tee $HOME/owl-claw.log"
 sleep 2
-ss -tlnp 2>/dev/null | grep -E ":$PORT\b" || { echo "!! port $PORT not listening"; tail -30 $HOME/owlrun.log; exit 1; }
-echo "owlrun is up on port $PORT"
+ss -tlnp 2>/dev/null | grep -E ":$PORT\b" || { echo "!! port $PORT not listening"; tail -30 $HOME/owl-claw.log; exit 1; }
+echo "owl-claw is up on port $PORT"
 REMOTE_START
 
 echo ">>> done"
 echo ">>> UI:        http://${TARGET#*@}:$PORT"
-echo ">>> log:       ssh $TARGET 'tail -f ~/owlrun.log'"
-echo ">>> attach:    ssh -t $TARGET tmux attach -t owlrun"
-echo ">>> stop:      ssh $TARGET tmux kill-session -t owlrun"
+echo ">>> log:       ssh $TARGET 'tail -f ~/owl-claw.log'"
+echo ">>> attach:    ssh -t $TARGET tmux attach -t owl-claw"
+echo ">>> stop:      ssh $TARGET tmux kill-session -t owl-claw"

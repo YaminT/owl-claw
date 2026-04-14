@@ -18,7 +18,7 @@ export interface Config {
 }
 
 const HOME = homedir();
-const OWLRUN_HOME = `${HOME}/.owlrun`;
+const OWLCLAW_HOME = `${HOME}/.owl-claw`;
 
 function readEnv(name: string, fallback: string): string {
   const v = process.env[name];
@@ -38,26 +38,26 @@ function readIntEnv(name: string, fallback: number): number {
 
 export function loadConfig(): Config {
   const instructionsDir = resolve(
-    readEnv("OWLRUN_INSTRUCTIONS_DIR", `${OWLRUN_HOME}/instructions`),
+    readEnv("OWLCLAW_INSTRUCTIONS_DIR", `${OWLCLAW_HOME}/instructions`),
   );
   const frontendDir = resolve(
-    readEnv("OWLRUN_FRONTEND_DIR", `${OWLRUN_HOME}/frontend-target`),
+    readEnv("OWLCLAW_FRONTEND_DIR", `${OWLCLAW_HOME}/frontend-target`),
   );
 
   return {
-    appName: readEnv("OWLRUN_APP_NAME", "OwlRun"),
-    webPort: readIntEnv("OWLRUN_PORT", 8090),
-    host: readEnv("OWLRUN_HOST", "0.0.0.0"),
+    appName: readEnv("OWLCLAW_APP_NAME", "OwlClaw"),
+    webPort: readIntEnv("OWLCLAW_PORT", 8090),
+    host: readEnv("OWLCLAW_HOST", "0.0.0.0"),
     instructionsDir,
     doneDir: resolve(instructionsDir, "done"),
     frontendDir,
-    maxRetries: readIntEnv("OWLRUN_MAX_RETRIES", 20),
-    retryIntervalSec: readIntEnv("OWLRUN_RETRY_INTERVAL", 1800),
-    promptRuns: readIntEnv("OWLRUN_PROMPT_RUNS", 1),
+    maxRetries: readIntEnv("OWLCLAW_MAX_RETRIES", 20),
+    retryIntervalSec: readIntEnv("OWLCLAW_RETRY_INTERVAL", 1800),
+    promptRuns: readIntEnv("OWLCLAW_PROMPT_RUNS", 1),
     anthropicBaseUrl: readEnv("ANTHROPIC_BASE_URL", ""),
-    pollIntervalMs: readIntEnv("OWLRUN_POLL_INTERVAL_MS", 2000),
-    claudeBin: readEnv("OWLRUN_CLAUDE_BIN", "claude"),
-    codexBin: readEnv("OWLRUN_CODEX_BIN", "codex"),
+    pollIntervalMs: readIntEnv("OWLCLAW_POLL_INTERVAL_MS", 2000),
+    claudeBin: readEnv("OWLCLAW_CLAUDE_BIN", "claude"),
+    codexBin: readEnv("OWLCLAW_CODEX_BIN", "codex"),
   };
 }
 
