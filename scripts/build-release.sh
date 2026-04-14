@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Build a portable OwlRun release tarball.
+# Build a portable OwlClaw release tarball.
 #
 # Usage:
-#   ./scripts/build-release.sh              # produces dist/owlrun-<version>.tar.gz
+#   ./scripts/build-release.sh              # produces dist/owl-claw-<version>.tar.gz
 #   OUT_DIR=/tmp ./scripts/build-release.sh # override output dir
 #
-# The tarball unpacks into a single top-level directory `owlrun-<version>/`
+# The tarball unpacks into a single top-level directory `owl-claw-<version>/`
 # that already contains install.sh, so:
 #
-#   curl -fsSL <url>/owlrun-0.1.0.tar.gz | tar xz
-#   cd owlrun-0.1.0
+#   curl -fsSL <url>/owl-claw-0.1.0.tar.gz | tar xz
+#   cd owl-claw-0.1.0
 #   ./install.sh
 
 set -euo pipefail
@@ -21,7 +21,7 @@ VERSION="$(grep -m1 '"version"' package.json | sed -E 's/.*"version": *"([^"]+)"
 [ -n "$VERSION" ] || { echo "could not read version from package.json" >&2; exit 1; }
 
 OUT_DIR="${OUT_DIR:-$ROOT/dist}"
-NAME="owlrun-$VERSION"
+NAME="owl-claw-$VERSION"
 TAR_PATH="$OUT_DIR/$NAME.tar.gz"
 mkdir -p "$OUT_DIR"
 
@@ -29,8 +29,8 @@ echo ">>> typecheck"
 bunx tsc --noEmit
 
 echo ">>> build sanity"
-bun build src/index.ts --target=bun --outfile=/tmp/owlrun-release-build.js >/dev/null
-rm -f /tmp/owlrun-release-build.js
+bun build src/index.ts --target=bun --outfile=/tmp/owl-claw-release-build.js >/dev/null
+rm -f /tmp/owl-claw-release-build.js
 
 echo ">>> staging"
 STAGE="$(mktemp -d)"

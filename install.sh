@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# OwlRun installer for Linux (and macOS as a courtesy).
+# OwlClaw installer for Linux (and macOS as a courtesy).
 #
 # Usage:
-#   ./install.sh                     # install to ~/.local/share/owlrun with wrapper at ~/.local/bin/owlrun
-#   ./install.sh --system            # install to /opt/owlrun with wrapper at /usr/local/bin/owlrun (needs root)
+#   ./install.sh                     # install to ~/.local/share/owl-claw with wrapper at ~/.local/bin/owl-claw
+#   ./install.sh --system            # install to /opt/owl-claw with wrapper at /usr/local/bin/owl-claw (needs root)
 #   ./install.sh --prefix DIR        # custom install prefix
 #   ./install.sh --bin-dir DIR       # custom wrapper location
 #   ./install.sh --systemd           # also install a system-wide systemd unit (implies --system)
@@ -12,10 +12,10 @@
 #   ./install.sh --help
 #
 # Environment overrides:
-#   OWLRUN_PREFIX, OWLRUN_BIN_DIR    same as --prefix / --bin-dir
+#   OWLCLAW_PREFIX, OWLCLAW_BIN_DIR    same as --prefix / --bin-dir
 #
-# Idempotent: safe to re-run. Installing an already-installed OwlRun redeploys
-# the code and preserves user data in ~/.owlrun/.
+# Idempotent: safe to re-run. Installing an already-installed OwlClaw redeploys
+# the code and preserves user data in ~/.owl-claw/.
 
 set -euo pipefail
 
@@ -55,72 +55,72 @@ fi
 
 # --- defaults ------------------------------------------------------------
 if [ "$MODE" = "system" ]; then
-  PREFIX="${EXPLICIT_PREFIX:-${OWLRUN_PREFIX:-/opt/owlrun}}"
-  BIN_DIR="${EXPLICIT_BIN:-${OWLRUN_BIN_DIR:-/usr/local/bin}}"
+  PREFIX="${EXPLICIT_PREFIX:-${OWLCLAW_PREFIX:-/opt/owl-claw}}"
+  BIN_DIR="${EXPLICIT_BIN:-${OWLCLAW_BIN_DIR:-/usr/local/bin}}"
 else
-  PREFIX="${EXPLICIT_PREFIX:-${OWLRUN_PREFIX:-$HOME/.local/share/owlrun}}"
-  BIN_DIR="${EXPLICIT_BIN:-${OWLRUN_BIN_DIR:-$HOME/.local/bin}}"
+  PREFIX="${EXPLICIT_PREFIX:-${OWLCLAW_PREFIX:-$HOME/.local/share/owl-claw}}"
+  BIN_DIR="${EXPLICIT_BIN:-${OWLCLAW_BIN_DIR:-$HOME/.local/bin}}"
 fi
-WRAPPER="$BIN_DIR/owlrun"
+WRAPPER="$BIN_DIR/owl-claw"
 
 # --- uninstall path ------------------------------------------------------
 if [ "$UNINSTALL" -eq 1 ]; then
-  head "Uninstalling OwlRun"
+  head "Uninstalling OwlClaw"
 
   # Stop any running instance first. If we leave a bun process alive while
   # removing the source tree, it keeps the port bound (and its now-orphaned
   # source loaded in memory) until it eventually crashes or is killed.
-  if command -v tmux >/dev/null 2>&1 && tmux has-session -t owlrun 2>/dev/null; then
-    tmux kill-session -t owlrun 2>/dev/null && ok "stopped tmux session owlrun" || true
+  if command -v tmux >/dev/null 2>&1 && tmux has-session -t owl-claw 2>/dev/null; then
+    tmux kill-session -t owl-claw 2>/dev/null && ok "stopped tmux session owl-claw" || true
   fi
-  # Belt-and-suspenders: kill anything still bound to the OwlRun port.
+  # Belt-and-suspenders: kill anything still bound to the OwlClaw port.
   if command -v fuser >/dev/null 2>&1; then
-    if fuser -k "${OWLRUN_PORT:-8090}/tcp" 2>/dev/null; then
-      ok "freed port ${OWLRUN_PORT:-8090}"
+    if fuser -k "${OWLCLAW_PORT:-8090}/tcp" 2>/dev/null; then
+      ok "freed port ${OWLCLAW_PORT:-8090}"
     fi
   fi
 
-  if [ -f /etc/systemd/system/owlrun.service ] && command -v systemctl >/dev/null 2>&1; then
+  if [ -f /etc/systemd/system/owl-claw.service ] && command -v systemctl >/dev/null 2>&1; then
     if [ "$(id -u)" -eq 0 ]; then
-      systemctl disable --now owlrun 2>/dev/null || true
-      rm -f /etc/systemd/system/owlrun.service
+      systemctl disable --now owl-claw 2>/dev/null || true
+      rm -f /etc/systemd/system/owl-claw.service
       systemctl daemon-reload || true
       ok "removed systemd unit"
     else
-      warn "systemd unit exists at /etc/systemd/system/owlrun.service — re-run with sudo to remove it"
+      warn "systemd unit exists at /etc/systemd/system/owl-claw.service — re-run with sudo to remove it"
     fi
   fi
-  if [ -e "/usr/local/bin/owlrun" ]; then
-    if [ "$(id -u)" -eq 0 ]; then rm -f /usr/local/bin/owlrun; ok "removed /usr/local/bin/owlrun";
-    else warn "/usr/local/bin/owlrun exists — re-run with sudo to remove it"; fi
+  if [ -e "/usr/local/bin/owl-claw" ]; then
+    if [ "$(id -u)" -eq 0 ]; then rm -f /usr/local/bin/owl-claw; ok "removed /usr/local/bin/owl-claw";
+    else warn "/usr/local/bin/owl-claw exists — re-run with sudo to remove it"; fi
   fi
-  if [ -d "/opt/owlrun" ]; then
-    if [ "$(id -u)" -eq 0 ]; then rm -rf /opt/owlrun; ok "removed /opt/owlrun";
-    else warn "/opt/owlrun exists — re-run with sudo to remove it"; fi
+  if [ -d "/opt/owl-claw" ]; then
+    if [ "$(id -u)" -eq 0 ]; then rm -rf /opt/owl-claw; ok "removed /opt/owl-claw";
+    else warn "/opt/owl-claw exists — re-run with sudo to remove it"; fi
   fi
-  if [ -e "$HOME/.local/bin/owlrun" ]; then rm -f "$HOME/.local/bin/owlrun"; ok "removed $HOME/.local/bin/owlrun"; fi
-  if [ -d "$HOME/.local/share/owlrun" ]; then rm -rf "$HOME/.local/share/owlrun"; ok "removed $HOME/.local/share/owlrun"; fi
+  if [ -e "$HOME/.local/bin/owl-claw" ]; then rm -f "$HOME/.local/bin/owl-claw"; ok "removed $HOME/.local/bin/owl-claw"; fi
+  if [ -d "$HOME/.local/share/owl-claw" ]; then rm -rf "$HOME/.local/share/owl-claw"; ok "removed $HOME/.local/share/owl-claw"; fi
 
-  info "Note: user data in ~/.owlrun/ is kept. Remove it manually if you don't need it anymore."
+  info "Note: user data in ~/.owl-claw/ is kept. Remove it manually if you don't need it anymore."
   exit 0
 fi
 
 # --- locate source -------------------------------------------------------
-# If invoked from inside an OwlRun checkout, install from there. Otherwise
-# we expect OWLRUN_TARBALL to point at a .tar.gz containing the source.
+# If invoked from inside an OwlClaw checkout, install from there. Otherwise
+# we expect OWLCLAW_TARBALL to point at a .tar.gz containing the source.
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/package.json" ] && grep -q '"name": "owlrun"' "$SCRIPT_DIR/package.json"; then
+if [ -f "$SCRIPT_DIR/package.json" ] && grep -q '"name": "owl-claw"' "$SCRIPT_DIR/package.json"; then
   SRC_MODE="local"
   SRC_DIR="$SCRIPT_DIR"
-elif [ -n "${OWLRUN_TARBALL:-}" ]; then
+elif [ -n "${OWLCLAW_TARBALL:-}" ]; then
   SRC_MODE="tarball"
   SRC_DIR=""
 else
-  die "run ./install.sh from inside the owlRun checkout, or set OWLRUN_TARBALL=<path-or-url>"
+  die "run ./install.sh from inside the owl-claw checkout, or set OWLCLAW_TARBALL=<path-or-url>"
 fi
 
 # --- preflight -----------------------------------------------------------
-head "OwlRun installer"
+head "OwlClaw installer"
 info "mode         $MODE"
 info "prefix       $PREFIX"
 info "bin-dir      $BIN_DIR"
@@ -157,7 +157,7 @@ install_bun() {
     fi
   fi
   if [ "$SKIP_BUN" -eq 1 ]; then
-    warn "bun is missing and --no-bun was passed; install Bun manually before running owlrun"
+    warn "bun is missing and --no-bun was passed; install Bun manually before running owl-claw"
     return
   fi
   head "Installing Bun"
@@ -198,7 +198,7 @@ install_bun
 # For --system installs, we need a bun that the *service user* can exec —
 # /root/.bun/* is typically 700 so prefer a location that's accessible.
 if [ "$MODE" = "system" ]; then
-  SERVICE_USER_CANDIDATE="${OWLRUN_SERVICE_USER:-${SUDO_USER:-root}}"
+  SERVICE_USER_CANDIDATE="${OWLCLAW_SERVICE_USER:-${SUDO_USER:-root}}"
   SERVICE_HOME_CANDIDATE="$(getent passwd "$SERVICE_USER_CANDIDATE" | cut -d: -f6 || true)"
   if [ -n "$SERVICE_HOME_CANDIDATE" ] && [ -x "$SERVICE_HOME_CANDIDATE/.bun/bin/bun" ]; then
     BUN_BIN="$SERVICE_HOME_CANDIDATE/.bun/bin/bun"
@@ -216,7 +216,7 @@ fi
 ok "using bun at $BUN_BIN"
 
 # --- sync source ---------------------------------------------------------
-head "Installing OwlRun to $PREFIX"
+head "Installing OwlClaw to $PREFIX"
 mkdir -p "$PREFIX"
 
 if [ "$SRC_MODE" = "local" ]; then
@@ -233,10 +233,10 @@ if [ "$SRC_MODE" = "local" ]; then
   fi
 else
   tmp="$(mktemp -d)"
-  if [[ "${OWLRUN_TARBALL}" == http*://* ]]; then
-    curl -fsSL -o "$tmp/src.tar.gz" "$OWLRUN_TARBALL"
+  if [[ "${OWLCLAW_TARBALL}" == http*://* ]]; then
+    curl -fsSL -o "$tmp/src.tar.gz" "$OWLCLAW_TARBALL"
   else
-    cp "$OWLRUN_TARBALL" "$tmp/src.tar.gz"
+    cp "$OWLCLAW_TARBALL" "$tmp/src.tar.gz"
   fi
   tar -xzf "$tmp/src.tar.gz" -C "$PREFIX" --strip-components=1
   rm -rf "$tmp"
@@ -245,7 +245,7 @@ fi
 # --- bun install ---------------------------------------------------------
 head "Installing dependencies"
 ( cd "$PREFIX" && "$BUN_BIN" install )
-( cd "$PREFIX" && "$BUN_BIN" build src/index.ts --target=bun --outfile=/tmp/owlrun-build-check.js >/dev/null && rm -f /tmp/owlrun-build-check.js )
+( cd "$PREFIX" && "$BUN_BIN" build src/index.ts --target=bun --outfile=/tmp/owl-claw-build-check.js >/dev/null && rm -f /tmp/owl-claw-build-check.js )
 ok "build check passed"
 
 # --- wrapper -------------------------------------------------------------
@@ -253,27 +253,27 @@ head "Installing wrapper"
 mkdir -p "$BIN_DIR"
 cat > "$WRAPPER" <<WRAPPER_EOF
 #!/usr/bin/env bash
-# OwlRun CLI wrapper -- generated by install.sh
-export OWLRUN_HOME_INSTALL="$PREFIX"
-exec "$BUN_BIN" run "$PREFIX/bin/owlrun.ts" "\$@"
+# OwlClaw CLI wrapper -- generated by install.sh
+export OWLCLAW_HOME_INSTALL="$PREFIX"
+exec "$BUN_BIN" run "$PREFIX/bin/owl-claw.ts" "\$@"
 WRAPPER_EOF
 chmod +x "$WRAPPER"
 ok "wrote $WRAPPER"
 
 # --- user data dir -------------------------------------------------------
 if [ "$MODE" = "system" ]; then
-  info '~/.owlrun/ will be created per-user on first `owlrun start`'
+  info '~/.owl-claw/ will be created per-user on first `owl-claw start`'
 else
-  mkdir -p "$HOME/.owlrun/instructions"
-  if [ ! -d "$HOME/.owlrun/frontend-target" ]; then
-    mkdir -p "$HOME/.owlrun/frontend-target"
-    ( cd "$HOME/.owlrun/frontend-target"
+  mkdir -p "$HOME/.owl-claw/instructions"
+  if [ ! -d "$HOME/.owl-claw/frontend-target" ]; then
+    mkdir -p "$HOME/.owl-claw/frontend-target"
+    ( cd "$HOME/.owl-claw/frontend-target"
       git init -q
       git -c user.email="$USER@local" -c user.name="$USER" commit -q --allow-empty -m init
       cat > CLAUDE.md <<'MD'
 # Frontend target (placeholder)
 
-Replace this directory with the real frontend repo, or set OWLRUN_FRONTEND_DIR
+Replace this directory with the real frontend repo, or set OWLCLAW_FRONTEND_DIR
 to point elsewhere.
 
 ## Conventions
@@ -281,30 +281,30 @@ to point elsewhere.
 MD
     )
   fi
-  ok "prepared $HOME/.owlrun/{instructions,frontend-target}"
+  ok "prepared $HOME/.owl-claw/{instructions,frontend-target}"
 fi
 
 # --- systemd unit --------------------------------------------------------
 if [ "$INSTALL_SYSTEMD" -eq 1 ]; then
   head "Installing systemd unit"
   [ "$(id -u)" -eq 0 ] || die "--systemd requires root"
-  # If a specific user is targeted, accept OWLRUN_SERVICE_USER; default to the
+  # If a specific user is targeted, accept OWLCLAW_SERVICE_USER; default to the
   # user who invoked sudo, falling back to root.
-  SERVICE_USER="${OWLRUN_SERVICE_USER:-${SUDO_USER:-root}}"
+  SERVICE_USER="${OWLCLAW_SERVICE_USER:-${SUDO_USER:-root}}"
   SERVICE_HOME="$(getent passwd "$SERVICE_USER" | cut -d: -f6)"
   # Pre-create the data dirs and log file that ReadWritePaths references.
   # Without these, the mount namespace setup fails with status=226/NAMESPACE.
-  sudo -u "$SERVICE_USER" -H mkdir -p "$SERVICE_HOME/.owlrun/instructions"
-  if [ ! -d "$SERVICE_HOME/.owlrun/frontend-target" ]; then
-    sudo -u "$SERVICE_USER" -H mkdir -p "$SERVICE_HOME/.owlrun/frontend-target"
+  sudo -u "$SERVICE_USER" -H mkdir -p "$SERVICE_HOME/.owl-claw/instructions"
+  if [ ! -d "$SERVICE_HOME/.owl-claw/frontend-target" ]; then
+    sudo -u "$SERVICE_USER" -H mkdir -p "$SERVICE_HOME/.owl-claw/frontend-target"
     sudo -u "$SERVICE_USER" -H bash -c "
-      cd '$SERVICE_HOME/.owlrun/frontend-target'
+      cd '$SERVICE_HOME/.owl-claw/frontend-target'
       git init -q
       git -c user.email='$SERVICE_USER@local' -c user.name='$SERVICE_USER' commit -q --allow-empty -m init
       cat > CLAUDE.md <<'MD'
 # Frontend target (placeholder)
 
-Replace this directory with the real frontend repo, or set OWLRUN_FRONTEND_DIR
+Replace this directory with the real frontend repo, or set OWLCLAW_FRONTEND_DIR
 to point elsewhere.
 
 ## Conventions
@@ -314,14 +314,14 @@ MD
   fi
   # Ensure the log file exists and is writable by the service user.
   # If a stale root-owned log exists from a previous attempt, fix the perms.
-  touch "$SERVICE_HOME/owlrun.log"
-  chown "$SERVICE_USER:" "$SERVICE_HOME/owlrun.log"
-  chown -R "$SERVICE_USER:" "$SERVICE_HOME/.owlrun"
-  ok "prepared $SERVICE_HOME/{.owlrun,owlrun.log} for systemd"
-  UNIT_PATH="/etc/systemd/system/owlrun.service"
+  touch "$SERVICE_HOME/owl-claw.log"
+  chown "$SERVICE_USER:" "$SERVICE_HOME/owl-claw.log"
+  chown -R "$SERVICE_USER:" "$SERVICE_HOME/.owl-claw"
+  ok "prepared $SERVICE_HOME/{.owl-claw,owl-claw.log} for systemd"
+  UNIT_PATH="/etc/systemd/system/owl-claw.service"
   cat > "$UNIT_PATH" <<UNIT
 [Unit]
-Description=OwlRun — Claude/Codex instruction runner
+Description=OwlClaw — Claude/Codex instruction runner
 After=network-online.target
 Wants=network-online.target
 
@@ -331,18 +331,18 @@ User=$SERVICE_USER
 WorkingDirectory=$PREFIX
 Environment=HOME=$SERVICE_HOME
 Environment=PATH=$SERVICE_HOME/.bun/bin:$SERVICE_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin
-Environment=OWLRUN_PORT=8090
-Environment=OWLRUN_HOST=0.0.0.0
-Environment=OWLRUN_INSTRUCTIONS_DIR=$SERVICE_HOME/.owlrun/instructions
-Environment=OWLRUN_FRONTEND_DIR=$SERVICE_HOME/.owlrun/frontend-target
+Environment=OWLCLAW_PORT=8090
+Environment=OWLCLAW_HOST=0.0.0.0
+Environment=OWLCLAW_INSTRUCTIONS_DIR=$SERVICE_HOME/.owl-claw/instructions
+Environment=OWLCLAW_FRONTEND_DIR=$SERVICE_HOME/.owl-claw/frontend-target
 ExecStart=$BUN_BIN run src/index.ts
 Restart=always
 RestartSec=5
-StandardOutput=append:$SERVICE_HOME/owlrun.log
-StandardError=append:$SERVICE_HOME/owlrun.log
+StandardOutput=append:$SERVICE_HOME/owl-claw.log
+StandardError=append:$SERVICE_HOME/owl-claw.log
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=$SERVICE_HOME/.owlrun $SERVICE_HOME/owlrun.log
+ReadWritePaths=$SERVICE_HOME/.owl-claw $SERVICE_HOME/owl-claw.log
 ProtectHome=read-only
 PrivateTmp=true
 
@@ -350,15 +350,15 @@ PrivateTmp=true
 WantedBy=multi-user.target
 UNIT
   systemctl daemon-reload
-  systemctl enable owlrun >/dev/null
+  systemctl enable owl-claw >/dev/null
   ok "installed systemd unit at $UNIT_PATH (user: $SERVICE_USER)"
-  info "start with:  sudo systemctl start owlrun"
-  info "logs:        journalctl -u owlrun -f"
+  info "start with:  sudo systemctl start owl-claw"
+  info "logs:        journalctl -u owl-claw -f"
 fi
 
 # --- done ----------------------------------------------------------------
 echo
-head "✓ OwlRun installed"
+head "✓ OwlClaw installed"
 info "wrapper:      $WRAPPER"
 info "sources:      $PREFIX"
 case ":$PATH:" in
@@ -367,7 +367,7 @@ case ":$PATH:" in
 esac
 echo
 info "Next steps:"
-info "  owlrun doctor        # check what's left to install/configure"
-info "  owlrun req           # install claude / codex CLIs (interactive)"
-info "  owlrun start         # start OwlRun in a tmux session"
-info "  owlrun open          # print the web UI URL"
+info "  owl-claw doctor        # check what's left to install/configure"
+info "  owl-claw req           # install claude / codex CLIs (interactive)"
+info "  owl-claw start         # start OwlClaw in a tmux session"
+info "  owl-claw open          # print the web UI URL"

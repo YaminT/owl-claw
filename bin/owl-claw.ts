@@ -6,9 +6,7 @@ import { arch as osArch, homedir } from "node:os";
 import { spawn as nodeSpawn } from "node:child_process";
 import { runProcess, which as runtimeWhich, sleepMs } from "../src/runtime.js";
 
-// Resolve the OwlRun project root from this script's location. Walk up until
-// we find a package.json whose name matches the npm package name.
-const PACKAGE_NAME = "owlrunner";
+const PACKAGE_NAME = "owl-claw";
 function findProjectRoot(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   let dir = here;
@@ -24,20 +22,20 @@ function findProjectRoot(): string {
     if (parent === dir) break;
     dir = parent;
   }
-  throw new Error(`Could not find OwlRun project root starting from ${here}`);
+  throw new Error(`Could not find OwlClaw project root starting from ${here}`);
 }
 
 const PROJECT_ROOT = findProjectRoot();
 const PKG_VERSION = JSON.parse(readFileSync(join(PROJECT_ROOT, "package.json"), "utf8")).version ?? "0.0.0";
 
-const OWLRUN_USER_HOME = join(homedir(), ".owlrun");
-const TMUX_SESSION = process.env.OWLRUN_TMUX_SESSION ?? "owlrun";
-const HOST = process.env.OWLRUN_HOST ?? "127.0.0.1";
-const PORT = process.env.OWLRUN_PORT ?? "8090";
+const OWLCLAW_USER_HOME = join(homedir(), ".owl-claw");
+const TMUX_SESSION = process.env.OWLCLAW_TMUX_SESSION ?? "owl-claw";
+const HOST = process.env.OWLCLAW_HOST ?? "127.0.0.1";
+const PORT = process.env.OWLCLAW_PORT ?? "8090";
 const BASE_URL = `http://${HOST === "0.0.0.0" ? "127.0.0.1" : HOST}:${PORT}`;
-const DEFAULT_INS = process.env.OWLRUN_INSTRUCTIONS_DIR ?? join(OWLRUN_USER_HOME, "instructions");
-const DEFAULT_FE = process.env.OWLRUN_FRONTEND_DIR ?? join(OWLRUN_USER_HOME, "frontend-target");
-const LOG_FILE = process.env.OWLRUN_LOG_FILE ?? join(homedir(), "owlrun.log");
+const DEFAULT_INS = process.env.OWLCLAW_INSTRUCTIONS_DIR ?? join(OWLCLAW_USER_HOME, "instructions");
+const DEFAULT_FE = process.env.OWLCLAW_FRONTEND_DIR ?? join(OWLCLAW_USER_HOME, "frontend-target");
+const LOG_FILE = process.env.OWLCLAW_LOG_FILE ?? join(homedir(), "owl-claw.log");
 
 /* ANSI */
 const c = {
@@ -104,8 +102,8 @@ async function isTmuxSessionRunning(): Promise<boolean> {
 }
 
 const SYSTEMD_UNIT_PATHS = [
-  "/etc/systemd/system/owlrun.service",
-  "/usr/lib/systemd/system/owlrun.service",
+  "/etc/systemd/system/owl-claw.service",
+  "/usr/lib/systemd/system/owl-claw.service",
 ];
 
 function systemdUnitInstalled(): string | null {
@@ -119,8 +117,8 @@ function detectSupervisor(args: string[]): Supervisor {
   // Explicit overrides win.
   if (args.includes("--tmux")) return "tmux";
   if (args.includes("--systemd")) return "systemd";
-  if (process.env.OWLRUN_SUPERVISOR === "systemd") return "systemd";
-  if (process.env.OWLRUN_SUPERVISOR === "tmux") return "tmux";
+  if (process.env.OWLCLAW_SUPERVISOR === "systemd") return "systemd";
+  if (process.env.OWLCLAW_SUPERVISOR === "tmux") return "tmux";
   // Auto-detect: systemd unit present + systemctl available → systemd.
   if (systemdUnitInstalled() && which("systemctl")) return "systemd";
   return "tmux";
@@ -133,14 +131,14 @@ function detectSupervisor(args: string[]): Supervisor {
 async function systemctl(action: string): Promise<{ ok: boolean; message: string }> {
   const isRoot = process.getuid?.() === 0;
   const cmd = isRoot
-    ? ["systemctl", action, "owlrun"]
-    : ["sudo", "-p", "[sudo] password to control owlrun.service: ", "systemctl", action, "owlrun"];
+    ? ["systemctl", action, "owl-claw"]
+    : ["sudo", "-p", "[sudo] password to control owl-claw.service: ", "systemctl", action, "owl-claw"];
   const r = await runProcess({ cmd, stdin: "inherit" });
   if (r.exitCode === 0) return { ok: true, message: r.stdout.trim() };
-  let msg = (r.stderr || r.stdout).trim() || `systemctl ${action} owlrun failed (exit ${r.exitCode})`;
+  let msg = (r.stderr || r.stdout).trim() || `systemctl ${action} owl-claw failed (exit ${r.exitCode})`;
   // Make the no-tty failure actionable instead of cryptic.
   if (msg.includes("a terminal is required") || msg.includes("no askpass")) {
-    msg = `sudo cannot prompt for a password from this shell. Run interactively or:\n  sudo systemctl ${action} owlrun`;
+    msg = `sudo cannot prompt for a password from this shell. Run interactively or:\n  sudo systemctl ${action} owl-claw`;
   }
   return { ok: false, message: msg };
 }
@@ -155,14 +153,14 @@ async function isPortListening(): Promise<boolean> {
 }
 
 function printUsage(): void {
-  console.log(`${fmt.head("OwlRun CLI")} v${PKG_VERSION}
+  console.log(`${fmt.head("OwlClaw CLI")} v${PKG_VERSION}
 
-${fmt.head("Usage:")}  owlrun <command> [options]
+${fmt.head("Usage:")}  owl-claw <command> [options]
 
 ${fmt.head("Commands:")}
   ${c.cyan}doctor${c.reset}                  Check environment (node, claude, codex, git, paths, supervisor)
   ${c.cyan}req${c.reset} [--yes] [tools]     Install missing requirements (claude, codex)
-  ${c.cyan}start${c.reset} [--tmux|--systemd] Start OwlRun (auto-detects supervisor; flags force one)
+  ${c.cyan}start${c.reset} [--tmux|--systemd] Start OwlClaw (auto-detects supervisor; flags force one)
   ${c.cyan}stop${c.reset}  [--tmux|--systemd] Stop the running instance
   ${c.cyan}restart${c.reset} [--tmux|--systemd]
   ${c.cyan}status${c.reset}                  Show worker status and task queue
@@ -170,22 +168,22 @@ ${fmt.head("Commands:")}
   ${c.cyan}logs${c.reset} [-f|-n N|--journal] Show log tail (-f follow, -n lines, --journal use journalctl)
   ${c.cyan}open${c.reset}                    Print (and open) the web UI URL
   ${c.cyan}attach${c.reset}                  Attach to the tmux session (tmux mode only)
-  ${c.cyan}uninstall${c.reset} [--yes|--purge]  Remove OwlRun (sources, wrapper, systemd unit). --purge removes ~/.owlrun too.
+  ${c.cyan}uninstall${c.reset} [--yes|--purge]  Remove OwlClaw (sources, wrapper, systemd unit). --purge removes ~/.owl-claw too.
   ${c.cyan}version${c.reset} ${c.cyan}help${c.reset}
 
 ${fmt.head("Supervisor detection:")}
-  ${fmt.dim("Auto-selects systemd when /etc/systemd/system/owlrun.service exists,")}
+  ${fmt.dim("Auto-selects systemd when /etc/systemd/system/owl-claw.service exists,")}
   ${fmt.dim("otherwise tmux. Override per-call with --tmux / --systemd, or set")}
-  ${fmt.dim("OWLRUN_SUPERVISOR=systemd|tmux.")}
+  ${fmt.dim("OWLCLAW_SUPERVISOR=systemd|tmux.")}
 
 ${fmt.head("Environment:")}
-  ${fmt.dim("OWLRUN_HOST")}                ${c.dim}(default 127.0.0.1 for CLI lookups)${c.reset}
-  ${fmt.dim("OWLRUN_PORT")}                ${c.dim}(default 8090)${c.reset}
-  ${fmt.dim("OWLRUN_INSTRUCTIONS_DIR")}    ${c.dim}(default ~/.owlrun/instructions)${c.reset}
-  ${fmt.dim("OWLRUN_FRONTEND_DIR")}        ${c.dim}(default ~/.owlrun/frontend-target)${c.reset}
-  ${fmt.dim("OWLRUN_LOG_FILE")}            ${c.dim}(default ~/owlrun.log)${c.reset}
-  ${fmt.dim("OWLRUN_TMUX_SESSION")}        ${c.dim}(default "owlrun")${c.reset}
-  ${fmt.dim("OWLRUN_SUPERVISOR")}          ${c.dim}systemd | tmux (overrides auto-detect)${c.reset}
+  ${fmt.dim("OWLCLAW_HOST")}                ${c.dim}(default 127.0.0.1 for CLI lookups)${c.reset}
+  ${fmt.dim("OWLCLAW_PORT")}                ${c.dim}(default 8090)${c.reset}
+  ${fmt.dim("OWLCLAW_INSTRUCTIONS_DIR")}    ${c.dim}(default ~/.owl-claw/instructions)${c.reset}
+  ${fmt.dim("OWLCLAW_FRONTEND_DIR")}        ${c.dim}(default ~/.owl-claw/frontend-target)${c.reset}
+  ${fmt.dim("OWLCLAW_LOG_FILE")}            ${c.dim}(default ~/owl-claw.log)${c.reset}
+  ${fmt.dim("OWLCLAW_TMUX_SESSION")}        ${c.dim}(default "owl-claw")${c.reset}
+  ${fmt.dim("OWLCLAW_SUPERVISOR")}          ${c.dim}systemd | tmux (overrides auto-detect)${c.reset}
 `);
 }
 
@@ -240,15 +238,15 @@ async function checkCodexAuth(): Promise<AuthResult> {
 }
 
 async function cmdDoctor(): Promise<CommandResult> {
-  console.log(fmt.head("OwlRun doctor"));
+  console.log(fmt.head("OwlClaw doctor"));
   console.log();
 
   let errors = 0;
   let warnings = 0;
 
   // If a running instance is reachable, use its actual config paths. This
-  // matters when the user starts OwlRun under different env (systemd unit,
-  // tmux with inline env, etc.) than the shell running `owlrun doctor`.
+  // matters when the user starts OwlClaw under different env (systemd unit,
+  // tmux with inline env, etc.) than the shell running `owl-claw doctor`.
   let runtimeFrontend = DEFAULT_FE;
   let runtimeInstructions = DEFAULT_INS;
   try {
@@ -318,7 +316,7 @@ async function cmdDoctor(): Promise<CommandResult> {
 
   // Tmux (needed for start/stop)
   if (which("tmux")) {
-    console.log(fmt.ok(`tmux ${fmt.dim("(used by `owlrun start`)")}`));
+    console.log(fmt.ok(`tmux ${fmt.dim("(used by `owl-claw start`)")}`));
   } else {
     console.log(fmt.warn(`tmux — not found ${fmt.dim("(start/stop/restart commands will not work)")}`));
     warnings++;
@@ -351,14 +349,14 @@ async function cmdDoctor(): Promise<CommandResult> {
   }
   const running = await isPortListening();
   if (running) {
-    console.log(fmt.ok(`OwlRun is responding at ${BASE_URL}`));
+    console.log(fmt.ok(`OwlClaw is responding at ${BASE_URL}`));
   } else {
     const tmuxAlive = await isTmuxSessionRunning();
     if (tmuxAlive) {
       console.log(fmt.warn(`tmux session "${TMUX_SESSION}" exists but ${BASE_URL} is not responding`));
       warnings++;
     } else {
-      console.log(fmt.warn(`OwlRun is not running ${fmt.dim("(run `owlrun start`)")}`));
+      console.log(fmt.warn(`OwlClaw is not running ${fmt.dim("(run `owl-claw start`)")}`));
     }
   }
 
@@ -415,32 +413,32 @@ async function cmdRestart(args: string[]): Promise<CommandResult> {
 
 async function startSystemd(): Promise<CommandResult> {
   if (await isPortListening()) {
-    console.log(fmt.ok(`OwlRun is already running at ${BASE_URL} ${fmt.dim("(systemd)")}`));
+    console.log(fmt.ok(`OwlClaw is already running at ${BASE_URL} ${fmt.dim("(systemd)")}`));
     return { exitCode: 0 };
   }
   const r = await systemctl("start");
-  if (!r.ok) { console.error(fmt.err(`systemctl start owlrun failed: ${r.message}`)); return { exitCode: 1 }; }
+  if (!r.ok) { console.error(fmt.err(`systemctl start owl-claw failed: ${r.message}`)); return { exitCode: 1 }; }
   if (await waitForPort()) {
-    console.log(fmt.ok(`OwlRun started at ${BASE_URL} ${fmt.dim("(systemd unit)")}`));
+    console.log(fmt.ok(`OwlClaw started at ${BASE_URL} ${fmt.dim("(systemd unit)")}`));
     return { exitCode: 0 };
   }
   console.log(fmt.warn(`systemctl start succeeded but ${BASE_URL} did not respond within 5s`));
-  console.log(fmt.dim("inspect: sudo journalctl -u owlrun -n 50"));
+  console.log(fmt.dim("inspect: sudo journalctl -u owl-claw -n 50"));
   return { exitCode: 1 };
 }
 
 async function stopSystemd(): Promise<CommandResult> {
   const r = await systemctl("stop");
-  if (!r.ok) { console.error(fmt.err(`systemctl stop owlrun failed: ${r.message}`)); return { exitCode: 1 }; }
-  console.log(fmt.ok("stopped systemd unit owlrun"));
+  if (!r.ok) { console.error(fmt.err(`systemctl stop owl-claw failed: ${r.message}`)); return { exitCode: 1 }; }
+  console.log(fmt.ok("stopped systemd unit owl-claw"));
   return { exitCode: 0 };
 }
 
 async function restartSystemd(): Promise<CommandResult> {
   const r = await systemctl("restart");
-  if (!r.ok) { console.error(fmt.err(`systemctl restart owlrun failed: ${r.message}`)); return { exitCode: 1 }; }
+  if (!r.ok) { console.error(fmt.err(`systemctl restart owl-claw failed: ${r.message}`)); return { exitCode: 1 }; }
   if (await waitForPort()) {
-    console.log(fmt.ok(`OwlRun restarted at ${BASE_URL} ${fmt.dim("(systemd unit)")}`));
+    console.log(fmt.ok(`OwlClaw restarted at ${BASE_URL} ${fmt.dim("(systemd unit)")}`));
     return { exitCode: 0 };
   }
   console.log(fmt.warn("systemctl restart succeeded but the port did not respond within 5s"));
@@ -451,16 +449,16 @@ async function restartSystemd(): Promise<CommandResult> {
 
 async function startTmux(): Promise<CommandResult> {
   if (!which("tmux")) {
-    console.error(fmt.err("tmux is not installed; cannot use `owlrun start` in tmux mode"));
+    console.error(fmt.err("tmux is not installed; cannot use `owl-claw start` in tmux mode"));
     return { exitCode: 1 };
   }
   if (await isTmuxSessionRunning()) {
     console.log(fmt.warn(`tmux session "${TMUX_SESSION}" already exists`));
     if (await isPortListening()) {
-      console.log(fmt.ok(`OwlRun is already running at ${BASE_URL}`));
+      console.log(fmt.ok(`OwlClaw is already running at ${BASE_URL}`));
       return { exitCode: 0 };
     }
-    console.log(fmt.dim("(session exists but port not responding; use `owlrun restart`)"));
+    console.log(fmt.dim("(session exists but port not responding; use `owl-claw restart`)"));
     return { exitCode: 1 };
   }
 
@@ -472,10 +470,10 @@ async function startTmux(): Promise<CommandResult> {
     return { exitCode: 1 };
   }
 
-  // Build env line. Inherit OWLRUN_* vars from the current shell so users can
-  // override paths by exporting them before running `owlrun start`.
+  // Build env line. Inherit OWLCLAW_* vars from the current shell so users can
+  // override paths by exporting them before running `owl-claw start`.
   const envLine = Object.entries(process.env)
-    .filter(([k]) => k.startsWith("OWLRUN_") || k === "ANTHROPIC_BASE_URL")
+    .filter(([k]) => k.startsWith("OWLCLAW_") || k === "ANTHROPIC_BASE_URL")
     .map(([k, v]) => `${k}=${shellQuote(v ?? "")}`)
     .join(" ");
 
@@ -486,11 +484,11 @@ async function startTmux(): Promise<CommandResult> {
     return { exitCode: 1 };
   }
   if (await waitForPort()) {
-    console.log(fmt.ok(`OwlRun started at ${BASE_URL} ${fmt.dim(`(tmux session "${TMUX_SESSION}")`)}`));
+    console.log(fmt.ok(`OwlClaw started at ${BASE_URL} ${fmt.dim(`(tmux session "${TMUX_SESSION}")`)}`));
     return { exitCode: 0 };
   }
   console.log(fmt.warn(`tmux session started but ${BASE_URL} did not respond within 5s`));
-  console.log(fmt.dim(`check logs: owlrun logs`));
+  console.log(fmt.dim(`check logs: owl-claw logs`));
   return { exitCode: 1 };
 }
 
@@ -510,9 +508,9 @@ async function stopTmux(): Promise<CommandResult> {
 
 async function cmdStatus(): Promise<CommandResult> {
   if (!(await isPortListening())) {
-    console.log(fmt.err(`OwlRun is not responding at ${BASE_URL}`));
+    console.log(fmt.err(`OwlClaw is not responding at ${BASE_URL}`));
     const tmuxAlive = await isTmuxSessionRunning();
-    if (tmuxAlive) console.log(fmt.dim(`tmux session "${TMUX_SESSION}" exists; check \`owlrun logs\``));
+    if (tmuxAlive) console.log(fmt.dim(`tmux session "${TMUX_SESSION}" exists; check \`owl-claw logs\``));
     return { exitCode: 1 };
   }
   type Worker = {
@@ -553,7 +551,7 @@ async function cmdStatus(): Promise<CommandResult> {
 
 async function cmdHealth(): Promise<CommandResult> {
   if (!(await isPortListening())) {
-    console.error(fmt.err(`OwlRun is not responding at ${BASE_URL}`));
+    console.error(fmt.err(`OwlClaw is not responding at ${BASE_URL}`));
     return { exitCode: 1 };
   }
   type Health = {
@@ -614,14 +612,14 @@ async function cmdLogs(args: string[]): Promise<CommandResult> {
       return { exitCode: 1 };
     }
     const cmd = follow
-      ? ["journalctl", "-u", "owlrun", "-n", String(lines), "-f"]
-      : ["journalctl", "-u", "owlrun", "-n", String(lines), "--no-pager"];
+      ? ["journalctl", "-u", "owl-claw", "-n", String(lines), "-f"]
+      : ["journalctl", "-u", "owl-claw", "-n", String(lines), "--no-pager"];
     return { exitCode: await runInherit(cmd) };
   }
 
   if (!existsSync(LOG_FILE)) {
     console.error(fmt.err(`log file not found: ${LOG_FILE}`));
-    if (sup === "systemd") console.error(fmt.dim("try: owlrun logs --journal"));
+    if (sup === "systemd") console.error(fmt.dim("try: owl-claw logs --journal"));
     return { exitCode: 1 };
   }
   const cmd = follow
@@ -633,10 +631,10 @@ async function cmdLogs(args: string[]): Promise<CommandResult> {
 async function cmdAttach(args: string[]): Promise<CommandResult> {
   const sup = detectSupervisor(args);
   if (sup === "systemd") {
-    console.error(fmt.warn("OwlRun is running under systemd; tmux attach is not applicable."));
+    console.error(fmt.warn("OwlClaw is running under systemd; tmux attach is not applicable."));
     console.error(fmt.dim("To follow live output:"));
-    console.error("  owlrun logs -f");
-    console.error("  sudo journalctl -u owlrun -f");
+    console.error("  owl-claw logs -f");
+    console.error("  sudo journalctl -u owl-claw -f");
     return { exitCode: 1 };
   }
   if (!which("tmux")) {
@@ -651,7 +649,7 @@ async function cmdAttach(args: string[]): Promise<CommandResult> {
 }
 
 async function cmdOpen(): Promise<CommandResult> {
-  console.log(`${fmt.head("OwlRun UI:")} ${BASE_URL}`);
+  console.log(`${fmt.head("OwlClaw UI:")} ${BASE_URL}`);
   const opener = process.platform === "darwin" ? "open" : process.platform === "linux" ? "xdg-open" : null;
   if (opener && which(opener)) {
     await run([opener, BASE_URL], { allowFail: true });
@@ -660,20 +658,20 @@ async function cmdOpen(): Promise<CommandResult> {
 }
 
 function cmdVersion(): CommandResult {
-  console.log(`owlrun ${PKG_VERSION}`);
+  console.log(`owl-claw ${PKG_VERSION}`);
   return { exitCode: 0 };
 }
 
 /* ---------- uninstall ---------- */
 
 /**
- * npm-installed packages live somewhere ending with /node_modules/owlrun.
+ * npm-installed packages live somewhere ending with /node_modules/owl-claw.
  * Detecting this path tells us to delegate the source-tree removal to npm
  * itself instead of trying to rm -rf it (npm tracks the symlink + bin).
  */
 function isNpmInstalled(): boolean {
-  return PROJECT_ROOT.includes(`${require("node:path").sep}node_modules${require("node:path").sep}owlrun`)
-      || PROJECT_ROOT.endsWith(`/node_modules/owlrun`);
+  return PROJECT_ROOT.includes(`${require("node:path").sep}node_modules${require("node:path").sep}owl-claw`)
+      || PROJECT_ROOT.endsWith(`/node_modules/owl-claw`);
 }
 
 async function cmdUninstall(args: string[]): Promise<CommandResult> {
@@ -688,11 +686,11 @@ async function cmdUninstall(args: string[]): Promise<CommandResult> {
     console.log(`  - print the command to remove the npm package itself`);
   } else {
     console.log(`  - source tree: ${fmt.dim(PROJECT_ROOT)}`);
-    console.log(`  - wrapper script (owlrun)`);
+    console.log(`  - wrapper script (owl-claw)`);
     if (unit) console.log(`  - systemd unit: ${fmt.dim(unit)}`);
   }
-  if (purge) console.log(`  - ${fmt.dim("user data:")} ${expandHome("~/.owlrun")} ${fmt.dim("(--purge)")}`);
-  else console.log(`  ${fmt.dim("(user data in ~/.owlrun/ is kept; pass --purge to remove it too)")}`);
+  if (purge) console.log(`  - ${fmt.dim("user data:")} ${expandHome("~/.owl-claw")} ${fmt.dim("(--purge)")}`);
+  else console.log(`  ${fmt.dim("(user data in ~/.owl-claw/ is kept; pass --purge to remove it too)")}`);
   console.log();
 
   if (!(await confirm("Proceed?", yes))) {
@@ -712,13 +710,13 @@ async function cmdUninstall(args: string[]): Promise<CommandResult> {
   let exitCode = 0;
   if (npmInstalled) {
     console.log();
-    console.log(fmt.head("To remove the OwlRun package, run:"));
-    console.log(`  npm uninstall -g owlrun`);
+    console.log(fmt.head("To remove the OwlClaw package, run:"));
+    console.log(`  npm uninstall -g owl-claw`);
     console.log();
     if (unit) {
       console.log(fmt.warn("A systemd unit is also installed. To remove it:"));
-      console.log(`  sudo systemctl disable --now owlrun`);
-      console.log(`  sudo rm /etc/systemd/system/owlrun.service`);
+      console.log(`  sudo systemctl disable --now owl-claw`);
+      console.log(`  sudo rm /etc/systemd/system/owl-claw.service`);
       console.log(`  sudo systemctl daemon-reload`);
       console.log();
     }
@@ -732,14 +730,14 @@ async function cmdUninstall(args: string[]): Promise<CommandResult> {
     const needsSudo = PROJECT_ROOT.startsWith("/opt") || PROJECT_ROOT.startsWith("/usr") || unit !== null;
     const isRoot = process.getuid?.() === 0;
     const cmd = (needsSudo && !isRoot)
-      ? ["sudo", "-p", "[sudo] password to uninstall OwlRun: ", "bash", installer, "--uninstall"]
+      ? ["sudo", "-p", "[sudo] password to uninstall OwlClaw: ", "bash", installer, "--uninstall"]
       : ["bash", installer, "--uninstall"];
     exitCode = await runInherit(cmd);
   }
 
   if (purge) {
-    const userHome = expandHome("~/.owlrun");
-    const logFile = expandHome("~/owlrun.log");
+    const userHome = expandHome("~/.owl-claw");
+    const logFile = expandHome("~/owl-claw.log");
     if (existsSync(userHome)) {
       await run(["rm", "-rf", userHome]);
       console.log(fmt.ok(`removed ${userHome}`));
@@ -806,7 +804,7 @@ async function installClaude(): Promise<{ ok: boolean; message: string }> {
 async function installCodex(): Promise<{ ok: boolean; message: string }> {
   const { codex: triple } = archSlug();
   const binDir = await ensureLocalBin();
-  const tmpDir = `/tmp/owlrun-codex-${process.pid}`;
+  const tmpDir = `/tmp/owl-claw-codex-${process.pid}`;
   mkdirSync(tmpDir, { recursive: true });
   const asset = `codex-${triple}.tar.gz`;
   const url = `https://github.com/openai/codex/releases/latest/download/${asset}`;
@@ -846,7 +844,7 @@ const INSTALLERS: Record<KnownTool, () => Promise<{ ok: boolean; message: string
 
 async function cmdReq(args: string[]): Promise<CommandResult> {
   if (process.platform !== "linux" && process.platform !== "darwin") {
-    console.error(fmt.err(`\`owlrun req\` only supports linux and darwin (detected ${process.platform})`));
+    console.error(fmt.err(`\`owl-claw req\` only supports linux and darwin (detected ${process.platform})`));
     return { exitCode: 1 };
   }
 
@@ -863,7 +861,7 @@ async function cmdReq(args: string[]): Promise<CommandResult> {
   // Sanity: need curl + tar for the installers
   for (const dep of ["curl", "tar", "bash"]) {
     if (!which(dep)) {
-      console.error(fmt.err(`\`${dep}\` is required for \`owlrun req\` but is not on $PATH`));
+      console.error(fmt.err(`\`${dep}\` is required for \`owl-claw req\` but is not on $PATH`));
       return { exitCode: 1 };
     }
   }
@@ -907,7 +905,7 @@ async function cmdReq(args: string[]): Promise<CommandResult> {
   if (wanted.includes("codex")) {
     console.log(`  ${fmt.dim("Authenticate Codex:")}           codex login`);
   }
-  console.log(`  ${fmt.dim("Verify:")}                       owlrun doctor`);
+  console.log(`  ${fmt.dim("Verify:")}                       owl-claw doctor`);
   console.log();
   if (!process.env.PATH?.split(":").includes(expandHome("~/.local/bin"))) {
     console.log(fmt.warn(`~/.local/bin is not on your $PATH; add this to your shell rc:`));
@@ -952,7 +950,7 @@ async function main(): Promise<void> {
   const handler = COMMANDS[cmd];
   if (!handler) {
     console.error(fmt.err(`unknown command: ${cmd}`));
-    console.error(`Run ${fmt.head("owlrun help")} for usage.`);
+    console.error(`Run ${fmt.head("owl-claw help")} for usage.`);
     process.exit(2);
   }
   try {

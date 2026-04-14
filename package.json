@@ -1,16 +1,19 @@
 {
-  "name": "owlrunner",
+  "name": "owl-claw",
   "version": "0.1.0",
-  "description": "Persistent local runner for Claude Code / Codex instruction files with a web portal",
+  "description": "OwlClaw — a persistent, self-healing task runner for Claude Code and Codex. Queue Markdown instructions, owl runs them.",
   "type": "module",
   "main": "dist/src/index.js",
   "bin": {
-    "owlrun": "dist/bin/owlrun.js"
+    "owl-claw": "dist/bin/owl-claw.js",
+    "owlclaw": "dist/bin/owl-claw.js",
+    "owl": "dist/bin/owl-claw.js"
   },
+  "author": "Yamin Tashakkori",
   "files": [
-    "dist",
+    "dist/bin",
+    "dist/src",
     "public",
-    "deploy/owlrun.service",
     "README.md",
     "LICENSE"
   ],
@@ -19,7 +22,7 @@
     "start": "node dist/src/index.js",
     "dev": "tsc -p tsconfig.build.json --watch",
     "typecheck": "tsc --noEmit",
-    "owlrun": "node dist/bin/owlrun.js",
+    "owl-claw": "node dist/bin/owl-claw.js",
     "prepublishOnly": "npm run build",
     "release": "bash scripts/build-release.sh"
   },
@@ -40,11 +43,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YaminT/owlrunner.git"
+    "url": "git+https://github.com/YaminT/owl-claw.git"
   },
-  "homepage": "https://github.com/YaminT/owlrunner",
+  "homepage": "https://github.com/YaminT/owl-claw",
   "bugs": {
-    "url": "https://github.com/YaminT/owlrunner/issues"
+    "url": "https://github.com/YaminT/owl-claw/issues"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
