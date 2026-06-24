@@ -15,8 +15,14 @@ let server: RunningServer | null = null;
 let engine: RunnerEngine | null = null;
 let win: BrowserWindow | null = null;
 
-/** Built React UI, served by the in-process server. dist/main.js → web/ui/dist. */
+/**
+ * Built React UI, served by the in-process server.
+ * - Packaged (asar:false): main.js sits at <Resources>/app and the UI is staged
+ *   beside it as ./ui, so serveStatic reads it as plain files on disk.
+ * - Dev (`electron .`): dist/main.js resolves to the sibling @owl/web package.
+ */
 function uiDir(): string {
+  if (app.isPackaged) return join(__dirname, "ui");
   return resolve(__dirname, "..", "..", "web", "ui", "dist");
 }
 

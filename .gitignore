@@ -1,5 +1,6 @@
 node_modules/
 dist/
+packages/desktop/build/
 .tsc-typecheck/
 *.tsbuildinfo
 .DS_Store

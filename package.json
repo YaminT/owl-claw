@@ -26,6 +26,9 @@
     "dev": "tsx bin/src/owl.ts",
     "desktop:build": "npm run build -w @owl/web && npm run build -w @owl/desktop",
     "desktop": "npm run desktop:build && npm run start -w @owl/desktop",
+    "desktop:dist": "npm run desktop:build && npm run dist -w @owl/desktop",
+    "desktop:dist:mac": "npm run desktop:build && npm run dist:mac -w @owl/desktop",
+    "desktop:dist:win": "npm run desktop:build && npm run dist:win -w @owl/desktop",
     "lint": "prettier --check .",
     "format": "prettier --write ."
   },
