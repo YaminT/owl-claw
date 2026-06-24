@@ -1,57 +1,40 @@
 {
   "name": "owl-claw",
-  "version": "0.1.0",
-  "description": "OwlClaw — a persistent, self-healing task runner for Claude Code and Codex. Queue Markdown instructions, owl runs them.",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Agent Task Runner — queue prompts and run them through a planner → developer → reviewer pipeline",
   "type": "module",
-  "main": "src/index.ts",
-  "bin": {
-    "owl-claw": "bin/owl-claw.ts",
-    "owlclaw": "bin/owl-claw.ts",
-    "owl": "bin/owl-claw.ts"
-  },
-  "files": [
-    "bin",
-    "src",
-    "public",
-    "deploy",
-    "scripts/build-release.sh",
-    "install.sh",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "start": "bun run src/index.ts",
-    "dev": "bun --hot run src/index.ts",
-    "typecheck": "bunx tsc --noEmit",
-    "owl-claw": "bun run bin/owl-claw.ts",
-    "release": "bash scripts/build-release.sh"
-  },
-  "keywords": [
-    "claude",
-    "claude-code",
-    "codex",
-    "ai",
-    "automation",
-    "agent",
-    "cli",
-    "worker",
-    "queue"
-  ],
-  "author": "Yamin Tashakkori",
-  "license": "MIT",
   "engines": {
-    "bun": ">=1.1.0"
+    "node": ">=20"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/YaminT/owl-claw.git"
+  "workspaces": [
+    "packages/*",
+    "bin"
+  ],
+  "trustedDependencies": [
+    "electron"
+  ],
+  "bin": {
+    "owl-claw": "bin/dist/owl.js",
+    "owl": "bin/dist/owl.js"
   },
-  "homepage": "https://github.com/YaminT/owl-claw",
-  "bugs": {
-    "url": "https://github.com/YaminT/owl-claw/issues"
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "tsx bin/src/owl.ts",
+    "desktop:build": "npm run build -w @owl/web && npm run build -w @owl/desktop",
+    "desktop": "npm run desktop:build && npm run start -w @owl/desktop",
+    "lint": "prettier --check .",
+    "format": "prettier --write ."
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "^5.4.0"
+    "@types/node": "^22.10.0",
+    "prettier": "^3.8.3",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }

@@ -1,0 +1,357 @@
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  resolveRole,
+  taskAssetPath,
+  TaskStore,
+  workingAreaDir,
+  type Settings,
+  type Task,
+  type TokenUsage,
+} from "@owl/shared";
+import { sumUsage } from "./tools/usage.js";
+import type { RunResult, Tool } from "./tools/types.js";
+import type { ToolRegistry } from "./tools/registry.js";
+import { UsageStore } from "./usage-store.js";
+import {
+  cleanupWorktree,
+  diffAgainstBase,
+  ensureWorktree,
+  isGitRepo,
+  type Worktree,
+} from "./worktree.js";
+
+export interface PipelineDeps {
+  root: string;
+  store: TaskStore;
+  registry: ToolRegistry;
+  settings: Settings;
+}
+
+const SYSTEM_PROMPTS = {
+  planner:
+    "You are the PLANNER. Produce a concise implementation plan. If — and only if — " +
+    "you genuinely cannot proceed without user input, list clarifying questions.",
+  refine:
+    "You are the PLANNER doing a refinement pass. Read the repo context and the existing " +
+    "plan, then output an improved, final plan. Do not ask the user questions.",
+  developer:
+    "You are the DEVELOPER. Implement the plan in the working directory. Do not ask the " +
+    "user questions; if truly blocked, state your question for the planner.",
+  reviewer:
+    "You are the REVIEWER. Review the diff for correctness and quality. Do not ask the user " +
+    "questions. Write a review report.",
+} as const;
+
+/** Current iteration number for a task (1-based). */
+export function currentIteration(task: Task): number {
+  return task.frontmatter.completedRuns + 1;
+}
+
+/** True when the iteration about to run is the task's last requested run. */
+export function isFinalIteration(task: Task): boolean {
+  return currentIteration(task) >= task.frontmatter.runs;
+}
+
+/**
+ * Critical-review framing injected on every run after the first. The prior
+ * run's work is present in the same worktree, so later runs are told to treat
+ * it as another AI's solution and rigorously review/adjust it (runs feature).
+ */
+function iterationFraming(task: Task): string | null {
+  const iteration = currentIteration(task);
+  if (iteration <= 1) return null;
+  return (
+    `## Iteration ${iteration} of ${task.frontmatter.runs}\n` +
+    `This is iteration ${iteration} of ${task.frontmatter.runs} for this task. A previous AI has ` +
+    `already attempted it, and that work is present in the working directory. Act as a critical ` +
+    `reviewer of another AI's solution: do not assume the existing work is correct or complete. ` +
+    `Focus on review and adjustment — find bugs, gaps, and anything left behind, then fix and ` +
+    `finish it. Be rigorous and skeptical, and make sure nothing is missing before you stop.`
+  );
+}
+
+/** Outcome of running the pipeline for a single task. */
+export type PipelineOutcome =
+  | { kind: "done"; task: Task }
+  | { kind: "parked"; task: Task; questions: string[] }
+  | { kind: "failed"; task: Task; error: string };
+
+export class Pipeline {
+  private readonly usageStore: UsageStore;
+  constructor(private readonly deps: PipelineDeps) {
+    this.usageStore = new UsageStore(deps.root);
+  }
+
+  private areaDir(id: string): string {
+    return workingAreaDir(this.deps.root, id);
+  }
+
+  private async log(id: string, line: string): Promise<void> {
+    await appendFile(join(this.areaDir(id), "log.txt"), line + "\n", "utf8").catch(() => {});
+  }
+
+  private tool(
+    task: Task,
+    role: "planner" | "developer" | "reviewer",
+  ): { tool: Tool; model: string } {
+    const assignment = resolveRole(this.deps.settings, task, role);
+    return { tool: this.deps.registry.require(assignment.tool), model: assignment.model };
+  }
+
+  /**
+   * List attached images/PDFs as absolute paths so the agent can open them in
+   * place (the files live under tasks/assets/<id>/ and outlive the worktree).
+   */
+  private attachmentsSection(task: Task): string | null {
+    const items = task.frontmatter.attachments ?? [];
+    if (items.length === 0) return null;
+    const lines = items.map(
+      (a) => `- ${taskAssetPath(this.deps.root, task.frontmatter.id, a.name)} (${a.type})`,
+    );
+    return (
+      "## Attachments\n" +
+      "The user attached the following files. Open and read them for additional " +
+      "context (they are images or PDFs):\n" +
+      lines.join("\n")
+    );
+  }
+
+  private buildPrompt(task: Task, extra: string): string {
+    const parts = [`# Task: ${task.frontmatter.title}`, `## Prompt\n${task.body.prompt}`];
+    if (task.body.command.trim()) parts.push(`## Command\n${task.body.command}`);
+    const attachments = this.attachmentsSection(task);
+    if (attachments) parts.push(attachments);
+    if (task.frontmatter.questions === "answered" && task.body.answers.trim()) {
+      parts.push(`## Answers to earlier questions\n${task.body.answers}`);
+    }
+    const framing = iterationFraming(task);
+    if (framing) parts.push(framing);
+    if (extra) parts.push(extra);
+    return parts.join("\n\n");
+  }
+
+  /**
+   * Run the full pipeline for a task that is already in `running` status with a
+   * working area created. Returns the outcome; the engine performs the final
+   * status transition based on it.
+   */
+  async run(task: Task): Promise<PipelineOutcome> {
+    const id = task.frontmatter.id;
+    const usages: TokenUsage[] = [];
+    const record = (r: RunResult) => {
+      if (r.usage) usages.push(r.usage);
+    };
+
+    // Append-only log mirrored into the task body so the agent output stays
+    // visible after the working area is removed on done/failed (the UI reads it
+    // from the task file). Writes to log.txt for live tailing too.
+    const logLines: string[] = task.body.log ? [task.body.log] : [];
+    const appendLog = async (line: string): Promise<void> => {
+      logLines.push(line);
+      task.body.log = logLines.join("\n\n");
+      await this.log(id, line);
+    };
+
+    let worktree: Worktree | null = null;
+    const { workingDirectory } = this.deps.settings;
+    const cwd = workingDirectory;
+
+    try {
+      // Set up isolation when the working directory is a git repo. Reused
+      // across iterations so later runs build on the prior run's work.
+      if (await isGitRepo(workingDirectory)) {
+        worktree = await ensureWorktree(workingDirectory, id);
+        await appendLog(
+          `Iteration ${currentIteration(task)}/${task.frontmatter.runs} — worktree at ${worktree.path}`,
+        );
+      } else {
+        await appendLog(
+          `WARNING: workingDirectory is not a git repo (${workingDirectory}); running without isolation.`,
+        );
+      }
+      const stepCwd = worktree?.path ?? cwd;
+
+      // --- Step 1: Planner ---
+      const planner = this.tool(task, "planner");
+      const planResult = await planner.tool.run({
+        role: "planner",
+        model: planner.model,
+        systemPrompt: SYSTEM_PROMPTS.planner,
+        prompt: this.buildPrompt(task, ""),
+        cwd: stepCwd,
+        autoApprove: true,
+      });
+      record(planResult);
+      await appendLog(`### Planner\n${planResult.output}`);
+
+      // Park if the planner raised questions (and they aren't already answered).
+      if (
+        planResult.questions &&
+        planResult.questions.length > 0 &&
+        task.frontmatter.questions !== "answered"
+      ) {
+        // Keep the worktree: the task will resume here, and any prior-iteration
+        // work must survive until the task finally completes.
+        await this.persistUsage(task, usages);
+        return { kind: "parked", task, questions: planResult.questions };
+      }
+
+      await writeFile(join(this.areaDir(id), "plan.md"), planResult.report + "\n", "utf8");
+      await this.writeReport(task, "planner", planResult.report);
+
+      // --- Step 2: Planner refinement pass (always run) ---
+      const refineResult = await planner.tool.run({
+        role: "planner",
+        model: planner.model,
+        systemPrompt: SYSTEM_PROMPTS.refine,
+        prompt: this.buildPrompt(task, `## Existing plan\n${planResult.report}`),
+        cwd: stepCwd,
+        autoApprove: true,
+      });
+      record(refineResult);
+      await appendLog(`### Planner (refinement)\n${refineResult.output}`);
+      await writeFile(join(this.areaDir(id), "plan.md"), refineResult.report + "\n", "utf8");
+      await this.writeReport(
+        task,
+        "planner",
+        `${planResult.report}\n\n## Refinement\n${refineResult.report}`,
+      );
+      const finalPlan = refineResult.report;
+
+      // --- Step 3: Developer ---
+      const developer = this.tool(task, "developer");
+      let devResult = await developer.tool.run({
+        role: "developer",
+        model: developer.model,
+        systemPrompt: SYSTEM_PROMPTS.developer,
+        prompt: this.buildPrompt(task, `## Plan\n${finalPlan}`),
+        cwd: stepCwd,
+        autoApprove: true,
+      });
+      record(devResult);
+      await appendLog(`### Developer\n${devResult.output}`);
+
+      // Developer questions are routed to the planner via file, never the user.
+      if (devResult.questions && devResult.questions.length > 0) {
+        devResult = await this.answerViaPlanner(
+          task,
+          planner,
+          "developer",
+          devResult,
+          stepCwd,
+          finalPlan,
+          usages,
+        );
+      }
+      await this.writeReport(task, "developer", devResult.report);
+
+      // --- Step 4: Reviewer ---
+      const diff = worktree ? await diffAgainstBase(worktree) : "(no git diff available)";
+      const reviewer = this.tool(task, "reviewer");
+      let reviewResult = await reviewer.tool.run({
+        role: "reviewer",
+        model: reviewer.model,
+        systemPrompt: SYSTEM_PROMPTS.reviewer,
+        prompt: this.buildPrompt(task, `## Plan\n${finalPlan}\n\n## Diff under review\n${diff}`),
+        cwd: stepCwd,
+        autoApprove: true,
+      });
+      record(reviewResult);
+      await appendLog(`### Reviewer\n${reviewResult.output}`);
+      if (reviewResult.questions && reviewResult.questions.length > 0) {
+        reviewResult = await this.answerViaPlanner(
+          task,
+          planner,
+          "reviewer",
+          reviewResult,
+          stepCwd,
+          finalPlan,
+          usages,
+        );
+      }
+      await this.writeReport(task, "reviewer", reviewResult.report);
+
+      // Only tear down the worktree on the final iteration; intermediate runs
+      // keep it so the next run continues from this run's output.
+      if (worktree && isFinalIteration(task)) await cleanupWorktree(workingDirectory, worktree);
+      await this.persistUsage(task, usages);
+      return { kind: "done", task };
+    } catch (err) {
+      const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      // Capture the failing tool's captured output (stdout/stderr) when present,
+      // so the Log tab shows *why* it failed even after cleanup.
+      const detail = (err as { output?: string })?.output;
+      await appendLog(`ERROR: ${message}${detail ? `\n${detail}` : ""}`);
+      if (worktree) await cleanupWorktree(workingDirectory, worktree).catch(() => {});
+      await this.persistUsage(task, usages).catch(() => {});
+      return { kind: "failed", task, error: message };
+    }
+  }
+
+  /**
+   * Route a developer/reviewer question to the planner and capture the written
+   * back-and-forth in the task dir (runner-pipeline spec 6.6). Returns a result
+   * carrying the original report plus the recorded dialogue, never parking.
+   */
+  private async answerViaPlanner(
+    task: Task,
+    planner: { tool: Tool; model: string },
+    fromRole: "developer" | "reviewer",
+    result: RunResult,
+    cwd: string,
+    plan: string,
+    usages: TokenUsage[],
+  ): Promise<RunResult> {
+    const id = task.frontmatter.id;
+    const questions = result.questions ?? [];
+    const answer = await planner.tool.run({
+      role: "planner",
+      model: planner.model,
+      systemPrompt:
+        "You are the PLANNER. Answer the following questions from the " +
+        `${fromRole} using the plan and task context. Do not escalate to the user.`,
+      prompt: this.buildPrompt(
+        task,
+        `## Plan\n${plan}\n\n## ${fromRole} questions\n${questions.join("\n")}`,
+      ),
+      cwd,
+      autoApprove: true,
+    });
+    if (answer.usage) usages.push(answer.usage);
+    const dialogue = [
+      `# ${fromRole} ↔ planner dialogue`,
+      `## ${fromRole} asked`,
+      questions.join("\n"),
+      `## planner answered`,
+      answer.report,
+    ].join("\n\n");
+    await writeFile(join(this.areaDir(id), `dialogue-${fromRole}.md`), dialogue + "\n", "utf8");
+    await this.log(id, `Routed ${fromRole} questions to planner (resolved via file).`);
+    return { ...result, questions: undefined, report: `${result.report}\n\n${dialogue}` };
+  }
+
+  /**
+   * Write a step report to reports/<role>.md AND mirror it into the task body's
+   * `## Reports` section. The working area under ongoing/ is removed when the
+   * task moves to done/, so the body mirror is the durable record.
+   */
+  private async writeReport(
+    task: Task,
+    role: "planner" | "developer" | "reviewer",
+    content: string,
+  ): Promise<void> {
+    const id = task.frontmatter.id;
+    await mkdir(join(this.areaDir(id), "reports"), { recursive: true });
+    await writeFile(join(this.areaDir(id), "reports", `${role}.md`), content + "\n", "utf8");
+    task.body.reports[role] = content;
+  }
+
+  /** Persist per-task token usage onto the task file and the global aggregate. */
+  private async persistUsage(task: Task, usages: TokenUsage[]): Promise<void> {
+    const total = sumUsage(usages);
+    task.frontmatter.tokens = total;
+    await this.deps.store.save(task);
+    await this.usageStore.add(total);
+  }
+}

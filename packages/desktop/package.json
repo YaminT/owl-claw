@@ -1,0 +1,25 @@
+{
+  "name": "@owl/desktop",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Owl desktop app (Electron) — runs the server and UI in one window",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsup",
+    "start": "electron .",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@owl/runner": "workspace:*",
+    "@owl/shared": "workspace:*",
+    "@owl/web": "workspace:*",
+    "chokidar": "^4.0.1",
+    "gray-matter": "^4.0.3",
+    "hono": "^4.6.14",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "electron": "^42.0.0"
+  }
+}

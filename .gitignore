@@ -1,21 +1,10 @@
-# Build outputs
-dist/
 node_modules/
-
-# Logs
-*.log
-
-# OS / editor cruft
+dist/
+.tsc-typecheck/
+*.tsbuildinfo
 .DS_Store
-.idea/
-.vscode/
-
-# Local env / secrets
-.env
-.env.*
-
-# Runtime state
-instructions/
-
-# Project planning notes (not source)
-claude.md
+data/tasks/
+data/commands/
+data/settings.json
+data/.runner.pid
+*.log
