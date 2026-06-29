@@ -66,6 +66,10 @@ export function createApp(deps: AppDeps): Hono {
     "/tasks/:id/retry",
     wrap(async (c) => service.retry(c.req.param("id")!)),
   );
+  api.get(
+    "/tasks/:id/live-log",
+    wrap(async (c) => service.liveLog(c.req.param("id")!)),
+  );
   api.post(
     "/tasks/:id/answers",
     wrap(async (c) =>

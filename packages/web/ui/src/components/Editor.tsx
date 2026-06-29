@@ -80,7 +80,11 @@ export function Editor({
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [outTab, setOutTab] = useState<OutputTab>("log");
+  // Live streaming agent output while the task runs (chunk-by-chunk from the
+  // server's log.txt tail). Null when the task isn't running.
+  const [liveLog, setLiveLog] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const logRef = useRef<HTMLPreElement>(null);
 
   const effectiveId = isNew ? createdId : taskId;
   const attachments = task?.frontmatter.attachments ?? [];
@@ -105,9 +109,28 @@ export function Editor({
   const refreshTask = useCallback(() => {
     const id = effectiveId;
     if (!id) return;
-    void api.getTask(id).then(setTask);
+    void api.getTask(id).then((t) => {
+      setTask(t);
+      // While running, pull the streaming log tail; otherwise the durable
+      // body.log (shown directly) is authoritative, so drop the live buffer.
+      if (t.frontmatter.status === "running") {
+        void api
+          .liveLog(id)
+          .then((r) => setLiveLog(r.log))
+          .catch(() => {});
+      } else {
+        setLiveLog(null);
+      }
+    });
   }, [effectiveId]);
   useLive(refreshTask);
+
+  // Keep the log view pinned to the newest output while streaming.
+  useEffect(() => {
+    if (outTab === "log" && logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [liveLog, outTab]);
 
   const parsedLabels = () =>
     labels
@@ -325,10 +348,24 @@ export function Editor({
             <span className={`status-pill status-${task.frontmatter.status}`}>
               {task.frontmatter.status}
             </span>
+            {task.frontmatter.status === "failed" && (
+              <button
+                className="retry-btn"
+                title="Clear the failed status and re-queue this task"
+                onClick={async () => {
+                  await api.retry(task.frontmatter.id);
+                  onChange();
+                  refreshTask();
+                }}
+              >
+                ↻ Retry
+              </button>
+            )}
           </div>
           <div className="output-tabs">
             {(["planner", "developer", "reviewer", "log"] as const).map((k) => {
-              const hasContent = k === "log" ? !!task.body.log : !!task.body.reports[k];
+              const hasContent =
+                k === "log" ? !!(liveLog ?? task.body.log) : !!task.body.reports[k];
               return (
                 <button
                   key={k}
@@ -337,14 +374,18 @@ export function Editor({
                   title={hasContent ? undefined : "No content yet"}
                 >
                   {k === "log" ? "Log" : k[0].toUpperCase() + k.slice(1)}
-                  {hasContent ? <span className="dot" /> : null}
+                  {k === "log" && liveLog !== null ? (
+                    <span className="live-dot" title="Streaming live" />
+                  ) : hasContent ? (
+                    <span className="dot" />
+                  ) : null}
                 </button>
               );
             })}
           </div>
-          <pre className="output-body">
+          <pre className="output-body" ref={logRef}>
             {outTab === "log"
-              ? task.body.log || "No agent output captured yet."
+              ? (liveLog ?? task.body.log) || "No agent output captured yet."
               : task.body.reports[outTab] || `No ${outTab} report yet.`}
           </pre>
         </section>

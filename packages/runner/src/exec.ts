@@ -12,6 +12,11 @@ export interface ExecOptions {
   input?: string;
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
+  /**
+   * Called with each stdout/stderr chunk as it arrives, for live streaming to
+   * the UI. The full output is still accumulated and returned on close.
+   */
+  onData?: (chunk: string) => void;
 }
 
 /**
@@ -43,8 +48,16 @@ export function execCommand(
       }, opts.timeoutMs);
     }
 
-    child.stdout.on("data", (d) => (stdout += d.toString()));
-    child.stderr.on("data", (d) => (stderr += d.toString()));
+    child.stdout.on("data", (d) => {
+      const s = d.toString();
+      stdout += s;
+      opts.onData?.(s);
+    });
+    child.stderr.on("data", (d) => {
+      const s = d.toString();
+      stderr += s;
+      opts.onData?.(s);
+    });
 
     child.on("error", (err) => {
       if (timer) clearTimeout(timer);

@@ -10,7 +10,7 @@ import { parseUsage } from "./usage.js";
 export class CodexTool implements Tool {
   readonly id = "codex";
   readonly displayName = "Codex";
-  readonly defaultModels = ["gpt-5.4"];
+  readonly defaultModels = ["gpt-5.5"];
   private readonly bin = process.env.OWL_CODEX_BIN ?? "codex";
 
   async detect(): Promise<HealthResult> {
@@ -30,13 +30,17 @@ export class CodexTool implements Tool {
   async run(opts: RunOptions): Promise<RunResult> {
     const args = ["exec", "--model", opts.model];
     if (opts.autoApprove) {
-      args.push("--full-auto", "--dangerously-bypass-approvals-and-sandbox");
+      // Full auto-approval, no sandbox — the runner's equivalent of claude's
+      // --dangerously-skip-permissions. Mutually exclusive with --full-auto
+      // (codex rejects both together), so pass only the bypass flag.
+      args.push("--dangerously-bypass-approvals-and-sandbox");
     }
     args.push(`${opts.systemPrompt}\n\n${opts.prompt}`);
 
     const res = await execCommand(this.bin, args, {
       cwd: opts.cwd,
       timeoutMs: opts.timeoutMs,
+      onData: opts.onChunk,
     });
     const output = `$ ${this.bin} ${args.slice(0, -1).join(" ")} <prompt>\n[exit ${res.code}]\n${res.stdout}\n${res.stderr}`;
     if (res.code !== 0 || res.timedOut) {

@@ -14,13 +14,15 @@ export function defaultSettings(workingDirectory = process.cwd()): Settings {
     blockHours: [],
     tokens: {},
     roles: {
-      planner: { tool: "claude-code", model: "opus-4.8" },
-      developer: { tool: "codex", model: "gpt-5.4" },
-      reviewer: { tool: "claude-code", model: "sonnet-4.6" },
+      planner: { tool: "claude-code", model: "opus" },
+      developer: { tool: "codex", model: "gpt-5.5" },
+      reviewer: { tool: "claude-code", model: "sonnet" },
     },
     models: {
-      "claude-code": ["opus-4.8", "sonnet-4.6"],
-      codex: ["gpt-5.4"],
+      // claude CLI --model aliases (map to the latest of each tier). Full IDs
+      // like "claude-opus-4-8" also work; aliases survive model bumps.
+      "claude-code": ["opus", "sonnet", "haiku"],
+      codex: ["gpt-5.5"],
       mock: ["mock-default"],
     },
   };

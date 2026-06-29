@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   AttachmentStore,
   CommandStore,
@@ -8,6 +10,7 @@ import {
   SettingsStore,
   TaskStore,
   uniqueKebabId,
+  workingAreaDir,
   type Attachment,
   type Settings,
   type Status,
@@ -151,6 +154,22 @@ export class TaskService {
 
   async retry(id: string): Promise<Task> {
     return this.tasks.transition(id, "pending");
+  }
+
+  /**
+   * Live agent output for a task. While running, reads the streaming log.txt in
+   * the working area (updated chunk-by-chunk as the tool emits output); once the
+   * task leaves `running`, falls back to the durable body log (the working area
+   * is removed on completion). `running` lets the UI keep polling while true.
+   */
+  async liveLog(id: string): Promise<{ log: string; running: boolean }> {
+    const task = await this.tasks.get(id);
+    if (!task) throw new ServiceError(404, `Task not found: ${id}`);
+    const running = task.frontmatter.status === "running";
+    if (!running) return { log: task.body.log, running };
+    const path = join(workingAreaDir(this.root, id), "log.txt");
+    const log = await readFile(path, "utf8").catch(() => task.body.log);
+    return { log, running };
   }
 
   /** Submit answers for a parked task: write answers, mark answered, resume. */

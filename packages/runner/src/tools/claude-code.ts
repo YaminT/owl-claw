@@ -10,7 +10,7 @@ import { parseUsage } from "./usage.js";
 export class ClaudeCodeTool implements Tool {
   readonly id = "claude-code";
   readonly displayName = "Claude Code";
-  readonly defaultModels = ["opus-4.8", "sonnet-4.6"];
+  readonly defaultModels = ["opus", "sonnet", "haiku"];
   private readonly bin = process.env.OWL_CLAUDE_BIN ?? "claude";
 
   async detect(): Promise<HealthResult> {
@@ -40,6 +40,7 @@ export class ClaudeCodeTool implements Tool {
       cwd: opts.cwd,
       input: opts.prompt,
       timeoutMs: opts.timeoutMs,
+      onData: opts.onChunk,
     });
     const output = `$ ${this.bin} ${args.join(" ")}\n[exit ${res.code}]\n${res.stdout}\n${res.stderr}`;
     if (res.code !== 0 || res.timedOut) {

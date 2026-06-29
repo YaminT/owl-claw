@@ -10,7 +10,7 @@ import {
   type TokenUsage,
 } from "@owl/shared";
 import { sumUsage } from "./tools/usage.js";
-import type { RunResult, Tool } from "./tools/types.js";
+import type { RunOptions, RunResult, Tool } from "./tools/types.js";
 import type { ToolRegistry } from "./tools/registry.js";
 import { UsageStore } from "./usage-store.js";
 import {
@@ -91,6 +91,26 @@ export class Pipeline {
     await appendFile(join(this.areaDir(id), "log.txt"), line + "\n", "utf8").catch(() => {});
   }
 
+  /** Append a raw output chunk (no newline added) to log.txt for live tailing. */
+  private async streamChunk(id: string, chunk: string): Promise<void> {
+    await appendFile(join(this.areaDir(id), "log.txt"), chunk, "utf8").catch(() => {});
+  }
+
+  /**
+   * Run one pipeline step, streaming its output to log.txt as it arrives so the
+   * UI's live-log view updates in real time. Writes a `### Label` header first,
+   * then forwards every tool chunk to log.txt (live-output spec).
+   */
+  private async runStep(
+    id: string,
+    label: string,
+    tool: Tool,
+    opts: RunOptions,
+  ): Promise<RunResult> {
+    await this.log(id, `\n### ${label}`);
+    return tool.run({ ...opts, onChunk: (c) => void this.streamChunk(id, c) });
+  }
+
   private tool(
     task: Task,
     role: "planner" | "developer" | "reviewer",
@@ -147,9 +167,17 @@ export class Pipeline {
     // visible after the working area is removed on done/failed (the UI reads it
     // from the task file). Writes to log.txt for live tailing too.
     const logLines: string[] = task.body.log ? [task.body.log] : [];
-    const appendLog = async (line: string): Promise<void> => {
-      logLines.push(line);
+    // Record a block into the in-memory body log (the durable record saved to
+    // the task file). Step output is streamed to log.txt live by runStep, so
+    // these blocks are NOT re-written there to avoid duplication.
+    const recordBody = (block: string): void => {
+      logLines.push(block);
       task.body.log = logLines.join("\n\n");
+    };
+    // Status/worktree/error lines: record to the body AND write to log.txt so
+    // they show up in the live tail too.
+    const appendLog = async (line: string): Promise<void> => {
+      recordBody(line);
       await this.log(id, line);
     };
 
@@ -174,7 +202,7 @@ export class Pipeline {
 
       // --- Step 1: Planner ---
       const planner = this.tool(task, "planner");
-      const planResult = await planner.tool.run({
+      const planResult = await this.runStep(id, "Planner", planner.tool, {
         role: "planner",
         model: planner.model,
         systemPrompt: SYSTEM_PROMPTS.planner,
@@ -183,7 +211,7 @@ export class Pipeline {
         autoApprove: true,
       });
       record(planResult);
-      await appendLog(`### Planner\n${planResult.output}`);
+      recordBody(`### Planner\n${planResult.output}`);
 
       // Park if the planner raised questions (and they aren't already answered).
       if (
@@ -201,7 +229,7 @@ export class Pipeline {
       await this.writeReport(task, "planner", planResult.report);
 
       // --- Step 2: Planner refinement pass (always run) ---
-      const refineResult = await planner.tool.run({
+      const refineResult = await this.runStep(id, "Planner (refinement)", planner.tool, {
         role: "planner",
         model: planner.model,
         systemPrompt: SYSTEM_PROMPTS.refine,
@@ -210,7 +238,7 @@ export class Pipeline {
         autoApprove: true,
       });
       record(refineResult);
-      await appendLog(`### Planner (refinement)\n${refineResult.output}`);
+      recordBody(`### Planner (refinement)\n${refineResult.output}`);
       await writeFile(join(this.areaDir(id), "plan.md"), refineResult.report + "\n", "utf8");
       await this.writeReport(
         task,
@@ -221,7 +249,7 @@ export class Pipeline {
 
       // --- Step 3: Developer ---
       const developer = this.tool(task, "developer");
-      let devResult = await developer.tool.run({
+      let devResult = await this.runStep(id, "Developer", developer.tool, {
         role: "developer",
         model: developer.model,
         systemPrompt: SYSTEM_PROMPTS.developer,
@@ -230,7 +258,7 @@ export class Pipeline {
         autoApprove: true,
       });
       record(devResult);
-      await appendLog(`### Developer\n${devResult.output}`);
+      recordBody(`### Developer\n${devResult.output}`);
 
       // Developer questions are routed to the planner via file, never the user.
       if (devResult.questions && devResult.questions.length > 0) {
@@ -249,7 +277,7 @@ export class Pipeline {
       // --- Step 4: Reviewer ---
       const diff = worktree ? await diffAgainstBase(worktree) : "(no git diff available)";
       const reviewer = this.tool(task, "reviewer");
-      let reviewResult = await reviewer.tool.run({
+      let reviewResult = await this.runStep(id, "Reviewer", reviewer.tool, {
         role: "reviewer",
         model: reviewer.model,
         systemPrompt: SYSTEM_PROMPTS.reviewer,
@@ -258,7 +286,7 @@ export class Pipeline {
         autoApprove: true,
       });
       record(reviewResult);
-      await appendLog(`### Reviewer\n${reviewResult.output}`);
+      recordBody(`### Reviewer\n${reviewResult.output}`);
       if (reviewResult.questions && reviewResult.questions.length > 0) {
         reviewResult = await this.answerViaPlanner(
           task,
@@ -305,7 +333,7 @@ export class Pipeline {
   ): Promise<RunResult> {
     const id = task.frontmatter.id;
     const questions = result.questions ?? [];
-    const answer = await planner.tool.run({
+    const answer = await this.runStep(id, `Planner (answering ${fromRole})`, planner.tool, {
       role: "planner",
       model: planner.model,
       systemPrompt:

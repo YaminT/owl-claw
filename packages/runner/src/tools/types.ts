@@ -21,6 +21,12 @@ export interface RunOptions {
   autoApprove: boolean;
   /** Optional timeout for this run. */
   timeoutMs?: number;
+  /**
+   * Called with each output chunk as the tool emits it, so the pipeline can
+   * stream live progress to the UI (live-output spec). Optional: tools that
+   * cannot stream simply never call it.
+   */
+  onChunk?: (chunk: string) => void;
 }
 
 export interface RunResult {

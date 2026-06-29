@@ -62,6 +62,18 @@ function Row({
           </span>
         ))}
       </span>
+      {f.status === "failed" && (
+        <button
+          className="retry-btn"
+          title="Clear the failed status and re-queue this task"
+          onClick={async () => {
+            await api.retry(f.id);
+            onChange();
+          }}
+        >
+          ↻ Retry
+        </button>
+      )}
       <label className="skip">
         <input
           type="checkbox"
