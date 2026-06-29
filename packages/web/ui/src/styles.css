@@ -435,6 +435,22 @@ label small {
   border-color: transparent;
   color: var(--amber);
 }
+.status-badge.archived {
+  opacity: 0.7;
+}
+.archive-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.archive-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
 
 .group h3 {
   color: var(--muted);

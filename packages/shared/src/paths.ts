@@ -9,6 +9,7 @@ export const STATUS_DIRS: Record<Status, string> = {
   action: "actions",
   done: "done",
   failed: "failed",
+  archived: "archived",
 };
 
 /** Reverse lookup: directory name → status. */
@@ -71,4 +72,12 @@ export function commandFilePath(root: string, id: string): string {
   return join(root, "commands", `${id}.md`);
 }
 
-export const ALL_STATUSES: Status[] = ["draft", "pending", "running", "action", "done", "failed"];
+export const ALL_STATUSES: Status[] = [
+  "draft",
+  "pending",
+  "running",
+  "action",
+  "done",
+  "failed",
+  "archived",
+];

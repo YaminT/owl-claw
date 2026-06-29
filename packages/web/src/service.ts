@@ -156,6 +156,16 @@ export class TaskService {
     return this.tasks.transition(id, "pending");
   }
 
+  /** Archive a task (any non-running status → archived). */
+  async archive(id: string): Promise<Task> {
+    return this.tasks.transition(id, "archived");
+  }
+
+  /** Unarchive a task back into the pending queue. */
+  async unarchive(id: string): Promise<Task> {
+    return this.tasks.transition(id, "pending");
+  }
+
   /**
    * Live agent output for a task. While running, reads the streaming log.txt in
    * the working area (updated chunk-by-chunk as the tool emits output); once the

@@ -1,7 +1,15 @@
 import { z } from "zod";
 
-/** The six task statuses; each maps to a directory under tasks/. */
-export const StatusSchema = z.enum(["draft", "pending", "running", "action", "done", "failed"]);
+/** Task statuses; each maps to a directory under tasks/. */
+export const StatusSchema = z.enum([
+  "draft",
+  "pending",
+  "running",
+  "action",
+  "done",
+  "failed",
+  "archived",
+]);
 export type Status = z.infer<typeof StatusSchema>;
 
 /** Question lifecycle for a task (replaces #hasQuestions markers). */

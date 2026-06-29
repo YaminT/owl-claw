@@ -1,7 +1,7 @@
 // Mirrors the shared task/settings shapes the API returns. Kept local so the UI
 // bundle does not import the Node-oriented shared package.
 
-export type Status = "draft" | "pending" | "running" | "action" | "done" | "failed";
+export type Status = "draft" | "pending" | "running" | "action" | "done" | "failed" | "archived";
 export type QuestionState = "none" | "pending" | "answered";
 
 export interface RoleAssignment {

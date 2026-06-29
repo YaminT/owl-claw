@@ -24,7 +24,18 @@ const STATUS_LABEL: Record<Status, string> = {
   action: "Action",
   done: "Done",
   failed: "Failed",
+  archived: "Archived",
 };
+
+const STATUS_FILTERS: Status[] = [
+  "draft",
+  "pending",
+  "running",
+  "action",
+  "done",
+  "failed",
+  "archived",
+];
 
 function Row({
   task,
@@ -74,6 +85,31 @@ function Row({
           ↻ Retry
         </button>
       )}
+      {f.status === "archived" ? (
+        <button
+          className="retry-btn"
+          title="Unarchive and re-queue this task"
+          onClick={async () => {
+            await api.unarchive(f.id);
+            onChange();
+          }}
+        >
+          ⇡ Unarchive
+        </button>
+      ) : (
+        f.status !== "running" && (
+          <button
+            className="archive-btn"
+            title="Archive this task"
+            onClick={async () => {
+              await api.archive(f.id);
+              onChange();
+            }}
+          >
+            ⊟ Archive
+          </button>
+        )
+      )}
       <label className="skip">
         <input
           type="checkbox"
@@ -103,15 +139,35 @@ export function TaskList({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [labelFilter, setLabelFilter] = useState<string>("");
   const [groupByLabel, setGroupByLabel] = useState(false);
+  // "active" = everything except archived (default); "all" = include archived;
+  // otherwise an exact status match.
+  const [statusFilter, setStatusFilter] = useState<"active" | "all" | Status>("active");
 
   const allLabels = useMemo(
     () => [...new Set(tasks.flatMap((t) => t.frontmatter.labels))].sort(),
     [tasks],
   );
 
+  const statusCounts = useMemo(() => {
+    const m: Partial<Record<Status, number>> = {};
+    for (const t of tasks) m[t.frontmatter.status] = (m[t.frontmatter.status] ?? 0) + 1;
+    return m;
+  }, [tasks]);
+
   const filtered = useMemo(
-    () => tasks.filter((t) => !labelFilter || t.frontmatter.labels.includes(labelFilter)),
-    [tasks, labelFilter],
+    () =>
+      tasks.filter((t) => {
+        const s = t.frontmatter.status;
+        const statusOk =
+          statusFilter === "all"
+            ? true
+            : statusFilter === "active"
+              ? s !== "archived"
+              : s === statusFilter;
+        const labelOk = !labelFilter || t.frontmatter.labels.includes(labelFilter);
+        return statusOk && labelOk;
+      }),
+    [tasks, labelFilter, statusFilter],
   );
 
   // Sorted by priority desc for display + reorder baseline.
@@ -147,6 +203,19 @@ export function TaskList({
         <button className="primary" onClick={onNew}>
           + New task
         </button>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as "active" | "all" | Status)}
+        >
+          <option value="active">Active (no archived)</option>
+          <option value="all">All statuses</option>
+          {STATUS_FILTERS.map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABEL[s]}
+              {statusCounts[s] ? ` (${statusCounts[s]})` : ""}
+            </option>
+          ))}
+        </select>
         <select value={labelFilter} onChange={(e) => setLabelFilter(e.target.value)}>
           <option value="">All labels</option>
           {allLabels.map((l) => (

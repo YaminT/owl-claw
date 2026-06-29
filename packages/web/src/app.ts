@@ -71,6 +71,14 @@ export function createApp(deps: AppDeps): Hono {
     wrap(async (c) => service.liveLog(c.req.param("id")!)),
   );
   api.post(
+    "/tasks/:id/archive",
+    wrap(async (c) => service.archive(c.req.param("id")!)),
+  );
+  api.post(
+    "/tasks/:id/unarchive",
+    wrap(async (c) => service.unarchive(c.req.param("id")!)),
+  );
+  api.post(
     "/tasks/:id/answers",
     wrap(async (c) =>
       service.submitAnswers(c.req.param("id")!, (await c.req.json()).answers ?? ""),

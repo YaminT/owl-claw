@@ -43,6 +43,8 @@ export const api = {
       body: JSON.stringify({ order }),
     }),
   retry: (id: string) => http<Task>(`/api/tasks/${id}/retry`, { method: "POST" }),
+  archive: (id: string) => http<Task>(`/api/tasks/${id}/archive`, { method: "POST" }),
+  unarchive: (id: string) => http<Task>(`/api/tasks/${id}/unarchive`, { method: "POST" }),
   liveLog: (id: string) => http<{ log: string; running: boolean }>(`/api/tasks/${id}/live-log`),
   submitAnswers: (id: string, answers: string) =>
     http<Task>(`/api/tasks/${id}/answers`, { method: "POST", body: JSON.stringify({ answers }) }),

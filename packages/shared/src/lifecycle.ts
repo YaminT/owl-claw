@@ -5,13 +5,16 @@ import type { Status } from "./schema.js";
  * here is rejected. `skip` is orthogonal and never appears as a transition.
  */
 const TRANSITIONS: Record<Status, Status[]> = {
-  draft: ["pending"],
-  pending: ["running"],
+  // Any non-running task can be archived; running tasks must finish first.
+  draft: ["pending", "archived"],
+  pending: ["running", "archived"],
   // running → pending re-queues the task for its next iteration (multi-run).
   running: ["pending", "action", "done", "failed"],
-  action: ["pending"],
-  done: [],
-  failed: ["pending"],
+  action: ["pending", "archived"],
+  done: ["archived"],
+  failed: ["pending", "archived"],
+  // Unarchive back into the queue.
+  archived: ["pending"],
 };
 
 export function canTransition(from: Status, to: Status): boolean {
