@@ -645,6 +645,44 @@ input[type="number"] {
   border-radius: 50%;
   background: var(--accent);
 }
+.live-panel {
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.live-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.live-head .live-step {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+.live-body {
+  margin: 0;
+  padding: 14px;
+  max-height: 420px;
+  overflow: auto;
+  background: var(--inset);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.live-head .live-dot,
 .output-tabs button .live-dot {
   width: 7px;
   height: 7px;

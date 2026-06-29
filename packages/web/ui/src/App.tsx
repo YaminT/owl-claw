@@ -3,6 +3,7 @@ import { api } from "./api.js";
 import { useLive } from "./useLive.js";
 import type { Settings, Task } from "./types.js";
 import { TaskList } from "./components/TaskList.js";
+import { LivePanel } from "./components/LivePanel.js";
 import { Editor } from "./components/Editor.js";
 import { CommandsTab } from "./components/CommandsTab.js";
 import { ActionsTab } from "./components/ActionsTab.js";
@@ -82,12 +83,15 @@ export function App() {
           <WorkingDirHeader settings={settings} runnerReport={runnerReport} onChange={refresh} />
         )}
         {tab === "tasks" && !editingId && (
-          <TaskList
-            tasks={tasks}
-            onEdit={setEditingId}
-            onChange={refresh}
-            onNew={() => setEditingId("__new__")}
-          />
+          <>
+            {runningTask && <LivePanel key={runningTask.frontmatter.id} task={runningTask} />}
+            <TaskList
+              tasks={tasks}
+              onEdit={setEditingId}
+              onChange={refresh}
+              onNew={() => setEditingId("__new__")}
+            />
+          </>
         )}
         {tab === "tasks" && editingId && (
           <Editor taskId={editingId} onClose={() => setEditingId(null)} onChange={refresh} />

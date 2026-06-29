@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MockTool, mockState, resetMock } from "./mock.js";
 import { parseUsage, sumUsage, UNKNOWN_USAGE } from "./usage.js";
 import { ToolRegistry } from "./registry.js";
-import { ClaudeCodeTool } from "./claude-code.js";
+import { ClaudeCodeTool, StreamRenderer } from "./claude-code.js";
 import { CodexTool } from "./codex.js";
 
 afterEach(() => resetMock());
@@ -64,6 +64,76 @@ describe("usage parsing", () => {
     expect(total.inputTokens).toBe(4);
     expect(total.outputTokens).toBe(6);
     expect(total.costUsd).toBeCloseTo(0.3);
+  });
+});
+
+describe("StreamRenderer (claude stream-json)", () => {
+  const lines = [
+    {
+      type: "stream_event",
+      event: { type: "content_block_start", index: 0, content_block: { type: "text" } },
+    },
+    {
+      type: "stream_event",
+      event: {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "Hello" },
+      },
+    },
+    {
+      type: "stream_event",
+      event: {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: " world" },
+      },
+    },
+    { type: "stream_event", event: { type: "content_block_stop", index: 0 } },
+    {
+      type: "stream_event",
+      event: {
+        type: "content_block_start",
+        index: 1,
+        content_block: { type: "tool_use", name: "Read" },
+      },
+    },
+    {
+      type: "stream_event",
+      event: {
+        type: "content_block_delta",
+        index: 1,
+        delta: { type: "input_json_delta", partial_json: '{"file_path":"a.ts"}' },
+      },
+    },
+    { type: "stream_event", event: { type: "content_block_stop", index: 1 } },
+    {
+      type: "user",
+      message: { content: [{ type: "tool_result", content: "line one\nline two" }] },
+    },
+    {
+      type: "result",
+      result: "Final plan",
+      usage: { input_tokens: 10, output_tokens: 5 },
+      total_cost_usd: 0.02,
+    },
+  ];
+
+  it("renders live text token-by-token, tool calls, results, report and usage", () => {
+    const live: string[] = [];
+    const r = new StreamRenderer((t) => live.push(t));
+    // Feed as a single blob split mid-line to exercise the line buffer.
+    const blob = lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
+    r.push(blob.slice(0, 50));
+    r.push(blob.slice(50));
+    r.flush();
+
+    expect(live.join("")).toContain("Hello world");
+    expect(r.transcript).toContain("⏺ Read(a.ts)");
+    expect(r.transcript).toContain("⎿ line one");
+    expect(r.transcript).not.toContain("line two"); // only first line of a result
+    expect(r.report).toBe("Final plan");
+    expect(r.usage).toEqual({ inputTokens: 10, outputTokens: 5, costUsd: 0.02, known: true });
   });
 });
 
