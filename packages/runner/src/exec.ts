@@ -30,7 +30,11 @@ export function execCommand(
   opts: ExecOptions,
 ): Promise<ExecResult> {
   return new Promise((resolve) => {
-    const child = spawn(command, args, {
+    // Node's spawn rejects argv entries / stdin containing NUL bytes. Agent
+    // output (a plan, a diff) gets fed into the next step's prompt and can carry
+    // a stray NUL — strip them so a poisoned prompt doesn't crash the run.
+    const safeArgs = args.map((a) => a.replace(/\0/g, ""));
+    const child = spawn(command, safeArgs, {
       cwd: opts.cwd,
       env: opts.env ?? process.env,
       stdio: ["pipe", "pipe", "pipe"],
