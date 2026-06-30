@@ -145,6 +145,21 @@ export class TaskStore {
     return task;
   }
 
+  /**
+   * Permanently remove a task. For a `running` task the whole working-area
+   * directory (ongoing/<id>/) is removed; every other status is a flat file.
+   * No-op if the task is already gone.
+   */
+  async delete(id: string): Promise<void> {
+    const located = await this.locate(id);
+    if (!located) return;
+    if (located.status === "running") {
+      await rm(workingAreaDir(this.root, id), { recursive: true, force: true });
+    } else {
+      await rm(located.path, { force: true });
+    }
+  }
+
   /** Toggle the orthogonal skip flag without changing status/location. */
   async setSkip(id: string, skip: boolean): Promise<Task> {
     const task = await this.get(id);

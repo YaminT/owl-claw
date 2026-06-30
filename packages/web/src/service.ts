@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   AttachmentStore,
@@ -8,6 +8,7 @@ import {
   MAX_ATTACHMENT_BYTES,
   newTask,
   SettingsStore,
+  taskAssetsDir,
   TaskStore,
   uniqueKebabId,
   workingAreaDir,
@@ -164,6 +165,21 @@ export class TaskService {
   /** Unarchive a task back into the pending queue. */
   async unarchive(id: string): Promise<Task> {
     return this.tasks.transition(id, "pending");
+  }
+
+  /**
+   * Permanently delete a task and its attachments. A running task must finish
+   * (or be archived) first — deleting mid-run would orphan the agent process.
+   */
+  async deleteTask(id: string): Promise<{ ok: true }> {
+    const task = await this.tasks.get(id);
+    if (!task) throw new ServiceError(404, `Task not found: ${id}`);
+    if (task.frontmatter.status === "running") {
+      throw new ServiceError(400, "Cannot delete a running task; wait for it to finish first");
+    }
+    await this.tasks.delete(id);
+    await rm(taskAssetsDir(this.root, id), { recursive: true, force: true }).catch(() => {});
+    return { ok: true };
   }
 
   /**

@@ -451,6 +451,19 @@ label small {
   border-color: var(--border-strong);
   color: var(--text);
 }
+.delete-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.delete-btn:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
 
 .group h3 {
   color: var(--muted);

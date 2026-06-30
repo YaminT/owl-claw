@@ -121,6 +121,19 @@ function Row({
         />
         skip
       </label>
+      {f.status !== "running" && (
+        <button
+          className="delete-btn"
+          title="Delete this task permanently"
+          onClick={async () => {
+            if (!confirm(`Delete “${f.title}” permanently? This cannot be undone.`)) return;
+            await api.deleteTask(f.id);
+            onChange();
+          }}
+        >
+          ✕ Delete
+        </button>
+      )}
     </li>
   );
 }

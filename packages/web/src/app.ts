@@ -78,6 +78,10 @@ export function createApp(deps: AppDeps): Hono {
     "/tasks/:id/unarchive",
     wrap(async (c) => service.unarchive(c.req.param("id")!)),
   );
+  api.delete(
+    "/tasks/:id",
+    wrap(async (c) => service.deleteTask(c.req.param("id")!)),
+  );
   api.post(
     "/tasks/:id/answers",
     wrap(async (c) =>
