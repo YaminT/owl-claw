@@ -62,6 +62,16 @@ node bin/dist/owl.js          # after `npm run build`
 owl-claw                      # after `npm install -g .` (or use the `owl` alias)
 ```
 
+### Install or update from source
+
+```bash
+bash scripts/install-or-update-owl-claw.sh
+```
+
+The script clones or fast-forwards the source checkout, installs dependencies, builds the
+web UI and CLI, and globally links the `owl-claw` and `owl` commands. Set
+`OWL_CLAW_DIR`, `OWL_CLAW_REPO`, or `OWL_CLAW_BRANCH` to override the source location.
+
 ### Options
 
 | Flag                | Env             | Default   | Description               |

@@ -24,7 +24,47 @@ export class CodexTool implements Tool {
     if (res.code !== 0) {
       return { status: "unavailable", message: `\`${this.bin} --version\` exited ${res.code}` };
     }
-    return { status: "available", message: "codex CLI detected", version: res.stdout.trim() };
+    const model = (await this.listModels())[0] ?? this.defaultModels[0];
+    const probe = await execCommand(
+      this.bin,
+      ["exec", "--model", model, "Reply with exactly: hi"],
+      {
+        cwd: process.cwd(),
+        timeoutMs: 60000,
+      },
+    );
+    if (probe.code !== 0 || probe.timedOut || !probe.stdout.trim()) {
+      return {
+        status: "unavailable",
+        message: `codex CLI detected but auth probe failed: ${summarizeProbe(probe)}`,
+        version: res.stdout.trim(),
+      };
+    }
+    return {
+      status: "available",
+      message: `codex CLI authenticated via smoke prompt (${model})`,
+      version: res.stdout.trim(),
+    };
+  }
+
+  async listModels(): Promise<string[]> {
+    if (!(await commandExists(this.bin))) return [...this.defaultModels];
+    const res = await execCommand(this.bin, ["debug", "models"], {
+      cwd: process.cwd(),
+      timeoutMs: 20000,
+    });
+    if (res.code !== 0) return [...this.defaultModels];
+    try {
+      const catalog = JSON.parse(res.stdout) as { models?: unknown[] };
+      const slugs = (catalog.models ?? [])
+        .filter((m): m is Record<string, unknown> => !!m && typeof m === "object")
+        .filter((m) => m.visibility !== "hide")
+        .map((m) => m.slug ?? m.id ?? m.name)
+        .filter((m): m is string => typeof m === "string" && m.trim().length > 0);
+      return unique(slugs.length ? slugs : this.defaultModels);
+    } catch {
+      return [...this.defaultModels];
+    }
   }
 
   async run(opts: RunOptions): Promise<RunResult> {
@@ -48,4 +88,25 @@ export class CodexTool implements Tool {
     }
     return { output, report: res.stdout.trim(), usage: parseUsage(res.stdout + res.stderr) };
   }
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values.map((v) => v.trim()).filter(Boolean))];
+}
+
+function summarizeProbe(res: {
+  code: number | null;
+  stderr: string;
+  stdout: string;
+  timedOut: boolean;
+}): string {
+  if (res.timedOut) return "timed out waiting for answer";
+  const detail = (res.stderr || res.stdout).trim().replace(/\s+/g, " ");
+  return detail
+    ? `exit ${res.code ?? "null"} - ${truncate(detail, 180)}`
+    : `exit ${res.code ?? "null"}`;
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n) + "..." : s;
 }

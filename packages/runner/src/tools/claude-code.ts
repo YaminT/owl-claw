@@ -28,7 +28,34 @@ export class ClaudeCodeTool implements Tool {
     if (res.code !== 0) {
       return { status: "unavailable", message: `\`${this.bin} --version\` exited ${res.code}` };
     }
-    return { status: "available", message: "claude CLI detected", version: res.stdout.trim() };
+    const model = (await this.listModels()).find((m) => m === "sonnet") ?? this.defaultModels[1];
+    const probe = await execCommand(
+      this.bin,
+      ["--print", "--output-format", "text", "--model", model, "Reply with exactly: hi"],
+      { cwd: process.cwd(), timeoutMs: 45000 },
+    );
+    if (probe.code !== 0 || probe.timedOut || !probe.stdout.trim()) {
+      return {
+        status: "unavailable",
+        message: `claude CLI detected but auth probe failed: ${summarizeProbe(probe)}`,
+        version: res.stdout.trim(),
+      };
+    }
+    return {
+      status: "available",
+      message: `claude CLI authenticated via smoke prompt (${model})`,
+      version: res.stdout.trim(),
+    };
+  }
+
+  async listModels(): Promise<string[]> {
+    if (!(await commandExists(this.bin))) return [...this.defaultModels];
+    const res = await execCommand(this.bin, ["--help"], {
+      cwd: process.cwd(),
+      timeoutMs: 8000,
+    });
+    if (res.code !== 0) return [...this.defaultModels];
+    return unique([...this.defaultModels, ...parseClaudeModelsFromHelp(res.stdout + res.stderr)]);
   }
 
   async run(opts: RunOptions): Promise<RunResult> {
@@ -70,6 +97,33 @@ export class ClaudeCodeTool implements Tool {
       usage: render.usage ?? parseUsage(res.stdout),
     };
   }
+}
+
+function parseClaudeModelsFromHelp(text: string): string[] {
+  const out: string[] = [];
+  const quoted = /['"]([a-z0-9][a-z0-9._-]*)['"]/gi;
+  for (let match = quoted.exec(text); match; match = quoted.exec(text)) {
+    const value = match[1];
+    if (/^(opus|sonnet|haiku|fable|claude-)/.test(value)) out.push(value);
+  }
+  return unique(out);
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values.map((v) => v.trim()).filter(Boolean))];
+}
+
+function summarizeProbe(res: {
+  code: number | null;
+  stderr: string;
+  stdout: string;
+  timedOut: boolean;
+}): string {
+  if (res.timedOut) return "timed out waiting for answer";
+  const detail = (res.stderr || res.stdout).trim().replace(/\s+/g, " ");
+  return detail
+    ? `exit ${res.code ?? "null"} - ${truncate(detail, 180)}`
+    : `exit ${res.code ?? "null"}`;
 }
 
 /**

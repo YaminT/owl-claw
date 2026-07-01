@@ -46,6 +46,22 @@ export class ToolRegistry {
     );
     return out;
   }
+
+  /** Fetch current model lists from every tool, falling back to built-in defaults. */
+  async modelsAll(): Promise<Record<string, string[]>> {
+    const out: Record<string, string[]> = {};
+    await Promise.all(
+      this.list().map(async (t) => {
+        try {
+          const models = await t.listModels();
+          out[t.id] = models.length ? models : [...t.defaultModels];
+        } catch {
+          out[t.id] = [...t.defaultModels];
+        }
+      }),
+    );
+    return out;
+  }
 }
 
 export function defaultTools(): Tool[] {

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defaultSettings, SettingsStore, taskFilePath } from "@owl/shared";
+import { MockTool, ToolRegistry } from "@owl/runner";
 import { createApp } from "./app.js";
 import { TaskService } from "./service.js";
 
@@ -19,7 +20,7 @@ const json = (body: unknown): RequestInit => ({
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "owl-web-"));
-  service = new TaskService(root);
+  service = new TaskService(root, new ToolRegistry([new MockTool()]));
   await service.tasks.ensureDirs();
   await new SettingsStore(root).save(defaultSettings(root));
   app = createApp({ service });
@@ -133,6 +134,11 @@ describe("settings & health API", () => {
   it("reports tool health", async () => {
     const res = await (await req("/api/health")).json();
     expect(res.tools.mock.status).toBe("available");
+  });
+
+  it("reports tool models", async () => {
+    const res = await (await req("/api/models")).json();
+    expect(res.models.mock).toEqual(["mock-default"]);
   });
 });
 

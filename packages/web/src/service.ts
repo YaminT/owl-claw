@@ -311,6 +311,10 @@ export class TaskService {
     return this.registry.healthAll();
   }
 
+  listModels(): Promise<Record<string, string[]>> {
+    return this.registry.modelsAll();
+  }
+
   loadUsage() {
     return this.usage.load();
   }

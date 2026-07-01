@@ -49,5 +49,6 @@ export interface Tool {
   displayName: string;
   defaultModels: string[];
   detect(): Promise<HealthResult>;
+  listModels(): Promise<string[]>;
   run(opts: RunOptions): Promise<RunResult>;
 }

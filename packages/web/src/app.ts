@@ -161,6 +161,10 @@ export function createApp(deps: AppDeps): Hono {
     wrap(async () => ({ tools: await service.health() })),
   );
   api.get(
+    "/models",
+    wrap(async () => ({ models: await service.listModels() })),
+  );
+  api.get(
     "/usage",
     wrap(async () => service.loadUsage()),
   );

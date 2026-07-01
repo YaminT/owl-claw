@@ -10,16 +10,49 @@ export function SettingsPage({ settings, onChange }: { settings: Settings; onCha
   const [workingDir, setWorkingDir] = useState(settings.workingDirectory);
   const [subdir, setSubdir] = useState(settings.selectedSubdirectory ?? "");
   const [roles, setRoles] = useState<Settings["roles"]>(settings.roles);
-  const [models, setModels] = useState<Record<string, string[]>>(settings.models);
+  const [models, setModels] = useState<Record<string, string[]>>(
+    withRoleModels(settings.models, settings.roles),
+  );
   const [health, setHealth] = useState<Record<string, HealthResult>>({});
   const [usage, setUsage] = useState<TokenUsage | null>(null);
   const [saved, setSaved] = useState(false);
+  const [modelsLoading, setModelsLoading] = useState(true);
+  const [modelsError, setModelsError] = useState<string | null>(null);
   const [modelDialogTool, setModelDialogTool] = useState<string | null>(null);
   const [newModel, setNewModel] = useState("");
 
   useEffect(() => {
-    void api.health().then(setHealth);
-    void api.usage().then(setUsage);
+    setWorkingDir(settings.workingDirectory);
+    setSubdir(settings.selectedSubdirectory ?? "");
+    setRoles(settings.roles);
+    setModels((m) => withRoleModels(mergeModels(settings.models, m), settings.roles));
+  }, [settings]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void api.health().then((result) => {
+      if (!cancelled) setHealth(result);
+    });
+    void api.usage().then((result) => {
+      if (!cancelled) setUsage(result);
+    });
+    void api
+      .models()
+      .then((fetched) => {
+        if (cancelled) return;
+        setModels((m) => withRoleModels(mergeModels(fetched, m), settings.roles));
+      })
+      .catch((err) => {
+        if (!cancelled) setModelsError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setModelsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const tools = Object.keys(models);
@@ -77,6 +110,25 @@ export function SettingsPage({ settings, onChange }: { settings: Settings; onCha
           ))}
           {Object.keys(health).length === 0 && <li className="muted">Checking…</li>}
         </ul>
+      </section>
+
+      <section>
+        <h3>Available models</h3>
+        {modelsLoading && <p className="muted">Fetching models from Claude and Codex…</p>}
+        {modelsError && <p className="muted">Model refresh failed: {modelsError}</p>}
+        <div className="model-list">
+          {tools.map((tool) => (
+            <div key={tool} className="model-group">
+              <strong>{tool}</strong>
+              <div className="model-chips">
+                {(models[tool] ?? []).map((m) => (
+                  <span key={m}>{m}</span>
+                ))}
+              </div>
+            </div>
+          ))}
+          {tools.length === 0 && <p className="muted">No models detected yet.</p>}
+        </div>
       </section>
 
       <section>
@@ -179,4 +231,30 @@ export function SettingsPage({ settings, onChange }: { settings: Settings; onCha
       )}
     </div>
   );
+}
+
+function mergeModels(...maps: Record<string, string[]>[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const map of maps) {
+    for (const [tool, models] of Object.entries(map)) {
+      out[tool] = unique([...(out[tool] ?? []), ...models]);
+    }
+  }
+  return out;
+}
+
+function withRoleModels(
+  models: Record<string, string[]>,
+  roles: Settings["roles"],
+): Record<string, string[]> {
+  const out = mergeModels(models);
+  for (const role of ROLES) {
+    const assignment = roles[role];
+    out[assignment.tool] = unique([...(out[assignment.tool] ?? []), assignment.model]);
+  }
+  return out;
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values.map((v) => v.trim()).filter(Boolean))];
 }

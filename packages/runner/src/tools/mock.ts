@@ -43,6 +43,10 @@ export class MockTool implements Tool {
     return { status: "available", message: "Mock tool is always available", version: "1.0.0" };
   }
 
+  async listModels(): Promise<string[]> {
+    return [...this.defaultModels];
+  }
+
   async run(opts: RunOptions): Promise<RunResult> {
     mockState.prompts.push(opts.prompt);
     if (mockState.failRole === opts.role) {

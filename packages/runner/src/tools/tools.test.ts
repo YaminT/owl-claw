@@ -4,6 +4,7 @@ import { parseUsage, sumUsage, UNKNOWN_USAGE } from "./usage.js";
 import { ToolRegistry } from "./registry.js";
 import { ClaudeCodeTool, StreamRenderer } from "./claude-code.js";
 import { CodexTool } from "./codex.js";
+import type { Tool } from "./types.js";
 
 afterEach(() => resetMock());
 
@@ -43,6 +44,10 @@ describe("MockTool", () => {
 
   it("is always available via detect", async () => {
     expect((await new MockTool().detect()).status).toBe("available");
+  });
+
+  it("lists its default model", async () => {
+    expect(await new MockTool().listModels()).toEqual(["mock-default"]);
   });
 });
 
@@ -146,10 +151,12 @@ describe("health detection", () => {
   });
 
   it("registry runs health for all tools and never throws", async () => {
+    process.env.OWL_CLAUDE_BIN = "definitely-not-real-claude-xyz";
     process.env.OWL_CODEX_BIN = "definitely-not-real-codex-xyz";
     const reg = new ToolRegistry();
     const health = await reg.healthAll();
     expect(health.mock.status).toBe("available");
+    expect(health["claude-code"].status).toBe("unavailable");
     expect(health.codex.status).toBe("unavailable");
     expect(
       reg
@@ -157,7 +164,28 @@ describe("health detection", () => {
         .map((t) => t.id)
         .sort(),
     ).toEqual(["claude-code", "codex", "mock"]);
+    delete process.env.OWL_CLAUDE_BIN;
     delete process.env.OWL_CODEX_BIN;
     void CodexTool;
+  });
+
+  it("registry collects model lists and falls back to defaults", async () => {
+    const failing = {
+      id: "failing",
+      displayName: "Failing",
+      defaultModels: ["fallback"],
+      detect: async () => ({ status: "unavailable", message: "nope" }),
+      listModels: async () => {
+        throw new Error("no models");
+      },
+      run: async () => {
+        throw new Error("not used");
+      },
+    } satisfies Tool;
+    const reg = new ToolRegistry([new MockTool(), failing]);
+    expect(await reg.modelsAll()).toEqual({
+      mock: ["mock-default"],
+      failing: ["fallback"],
+    });
   });
 });

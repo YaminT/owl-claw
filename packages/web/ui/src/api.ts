@@ -83,5 +83,6 @@ export const api = {
   updateSettings: (patch: Partial<Settings>) =>
     http<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(patch) }),
   health: () => http<{ tools: Record<string, HealthResult> }>("/api/health").then((r) => r.tools),
+  models: () => http<{ models: Record<string, string[]> }>("/api/models").then((r) => r.models),
   usage: () => http<TokenUsage>("/api/usage"),
 };
