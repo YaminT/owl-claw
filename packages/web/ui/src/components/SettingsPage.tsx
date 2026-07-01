@@ -163,7 +163,7 @@ export function SettingsPage({ settings, onChange }: { settings: Settings; onCha
                 autoFocus
                 value={newModel}
                 onChange={(e) => setNewModel(e.target.value)}
-                placeholder="e.g. opus-4.8"
+                placeholder="e.g. opus"
               />
             </label>
             <div className="editor-actions">
