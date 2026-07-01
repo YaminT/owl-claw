@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
+import { owlLogoUrl } from "./assets.js";
 import { useLive } from "./useLive.js";
 import type { Settings, Task } from "./types.js";
 import { TaskList } from "./components/TaskList.js";
@@ -56,7 +57,7 @@ export function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <img className="brand-logo" src="/owl.png" alt="Owl" />
+          <img className="brand-logo" src={owlLogoUrl} alt="Owl" />
           <div className="brand-text">
             <span className="brand-name">Owl</span>
             <span className="brand-sub">Agent Task Runner</span>

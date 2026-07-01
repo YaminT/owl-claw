@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Modal } from "./Modal.js";
 import { FolderOpenIcon } from "./Icons.js";
 import { RunnerToggle } from "./RunnerToggle.js";
+import { owlLogoUrl } from "../assets.js";
 import { useWorkingDir } from "../useWorkingDir.js";
 import type { Settings } from "../types.js";
 
@@ -100,7 +101,7 @@ export function WorkingDirGate({ onChange }: { onChange: () => void }) {
   return (
     <div className="gate">
       <div className="gate-card">
-        <img className="gate-logo" src="/owl.png" alt="Owl" />
+        <img className="gate-logo" src={owlLogoUrl} alt="Owl" />
         <h1>Welcome to Owl</h1>
         <p className="muted">
           Choose the project folder Owl should work in — this is where your tasks run, so it should
