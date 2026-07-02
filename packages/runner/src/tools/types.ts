@@ -27,6 +27,8 @@ export interface RunOptions {
    * cannot stream simply never call it.
    */
   onChunk?: (chunk: string) => void;
+  /** File whose presence requests cancellation of the running tool process. */
+  stopSignalPath?: string;
 }
 
 export interface RunResult {

@@ -47,6 +47,12 @@ export const api = {
   unarchive: (id: string) => http<Task>(`/api/tasks/${id}/unarchive`, { method: "POST" }),
   deleteTask: (id: string) => http<{ ok: true }>(`/api/tasks/${id}`, { method: "DELETE" }),
   liveLog: (id: string) => http<{ log: string; running: boolean }>(`/api/tasks/${id}/live-log`),
+  stopTask: (id: string) => http<{ ok: true }>(`/api/tasks/${id}/stop`, { method: "POST" }),
+  injectPrompt: (id: string, prompt: string) =>
+    http<{ ok: true }>(`/api/tasks/${id}/inject`, {
+      method: "POST",
+      body: JSON.stringify({ prompt }),
+    }),
   submitAnswers: (id: string, answers: string) =>
     http<Task>(`/api/tasks/${id}/answers`, { method: "POST", body: JSON.stringify({ answers }) }),
 

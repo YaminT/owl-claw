@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile, stat, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile, stat, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -7,12 +7,16 @@ import {
   newTask,
   SettingsStore,
   TaskStore,
+  taskControlDir,
   taskFilePath,
+  taskPromptInjectionsPath,
+  taskStopRequestPath,
   workingAreaDir,
   type TaskFrontmatter,
 } from "@owl/shared";
 import { RunnerEngine } from "./engine.js";
 import { execCommand } from "./exec.js";
+import { Pipeline } from "./pipeline.js";
 import { mockState, resetMock } from "./tools/mock.js";
 
 let dataRoot: string;
@@ -195,6 +199,51 @@ describe("RunnerEngine integration (mock tool)", () => {
     // Retry returns it to pending.
     await engine.store.transition("t1", "pending");
     expect(await exists(taskFilePath(dataRoot, "pending", "t1"))).toBe(true);
+  });
+
+  it("passes injected prompts into later pipeline steps", async () => {
+    await engine.store.create(newTask(fm(), "Build it."));
+    const running = await engine.store.transition("t1", "running");
+    await mkdir(taskControlDir(dataRoot, "t1"), { recursive: true });
+    await writeFile(
+      taskPromptInjectionsPath(dataRoot, "t1"),
+      "## 2026-07-02T00:00:00.000Z\nAlso add a focused regression test.\n",
+    );
+
+    const pipeline = new Pipeline({
+      root: dataRoot,
+      store: engine.store,
+      registry: engine.registry,
+      settings: await engine.settingsStore.load(),
+    });
+    const outcome = await pipeline.run(running);
+
+    expect(outcome.kind).toBe("done");
+    expect(
+      mockState.prompts.some(
+        (p) =>
+          p.includes("User prompts injected while this task was running") &&
+          p.includes("Also add a focused regression test."),
+      ),
+    ).toBe(true);
+  });
+
+  it("fails before the next step when stop has been requested", async () => {
+    await engine.store.create(newTask(fm(), "Build it."));
+    const running = await engine.store.transition("t1", "running");
+    await mkdir(taskControlDir(dataRoot, "t1"), { recursive: true });
+    await writeFile(taskStopRequestPath(dataRoot, "t1"), "stop\n");
+
+    const pipeline = new Pipeline({
+      root: dataRoot,
+      store: engine.store,
+      registry: engine.registry,
+      settings: await engine.settingsStore.load(),
+    });
+    const outcome = await pipeline.run(running);
+
+    expect(outcome.kind).toBe("failed");
+    if (outcome.kind === "failed") expect(outcome.error).toContain("stopped by user");
   });
 });
 

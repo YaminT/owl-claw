@@ -1,8 +1,10 @@
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   resolveRole,
   taskAssetPath,
+  taskPromptInjectionsPath,
+  taskStopRequestPath,
   TaskStore,
   workingAreaDir,
   type Settings,
@@ -96,6 +98,19 @@ export class Pipeline {
     await appendFile(join(this.areaDir(id), "log.txt"), chunk, "utf8").catch(() => {});
   }
 
+  private async stopRequested(id: string): Promise<boolean> {
+    try {
+      await stat(taskStopRequestPath(this.deps.root, id));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async assertNotStopped(id: string): Promise<void> {
+    if (await this.stopRequested(id)) throw new Error("Task stopped by user");
+  }
+
   /**
    * Run one pipeline step, streaming its output to log.txt as it arrives so the
    * UI's live-log view updates in real time. Writes a `### Label` header first,
@@ -107,8 +122,13 @@ export class Pipeline {
     tool: Tool,
     opts: RunOptions,
   ): Promise<RunResult> {
+    await this.assertNotStopped(id);
     await this.log(id, `\n### ${label}`);
-    return tool.run({ ...opts, onChunk: (c) => void this.streamChunk(id, c) });
+    return tool.run({
+      ...opts,
+      stopSignalPath: taskStopRequestPath(this.deps.root, id),
+      onChunk: (c) => void this.streamChunk(id, c),
+    });
   }
 
   private tool(
@@ -137,7 +157,21 @@ export class Pipeline {
     );
   }
 
-  private buildPrompt(task: Task, extra: string): string {
+  private async injectedPromptsSection(task: Task): Promise<string | null> {
+    const text = await readFile(
+      taskPromptInjectionsPath(this.deps.root, task.frontmatter.id),
+      "utf8",
+    ).catch(() => "");
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+    return (
+      "## User prompts injected while this task was running\n" +
+      "Apply these additional user instructions in this and later steps:\n" +
+      trimmed
+    );
+  }
+
+  private async buildPrompt(task: Task, extra: string): Promise<string> {
     const parts = [`# Task: ${task.frontmatter.title}`, `## Prompt\n${task.body.prompt}`];
     if (task.body.command.trim()) parts.push(`## Command\n${task.body.command}`);
     const attachments = this.attachmentsSection(task);
@@ -145,6 +179,8 @@ export class Pipeline {
     if (task.frontmatter.questions === "answered" && task.body.answers.trim()) {
       parts.push(`## Answers to earlier questions\n${task.body.answers}`);
     }
+    const injected = await this.injectedPromptsSection(task);
+    if (injected) parts.push(injected);
     const framing = iterationFraming(task);
     if (framing) parts.push(framing);
     if (extra) parts.push(extra);
@@ -206,7 +242,7 @@ export class Pipeline {
         role: "planner",
         model: planner.model,
         systemPrompt: SYSTEM_PROMPTS.planner,
-        prompt: this.buildPrompt(task, ""),
+        prompt: await this.buildPrompt(task, ""),
         cwd: stepCwd,
         autoApprove: true,
       });
@@ -221,6 +257,7 @@ export class Pipeline {
       ) {
         // Keep the worktree: the task will resume here, and any prior-iteration
         // work must survive until the task finally completes.
+        await this.mirrorLiveLog(task).catch(() => {});
         await this.persistUsage(task, usages);
         return { kind: "parked", task, questions: planResult.questions };
       }
@@ -233,7 +270,7 @@ export class Pipeline {
         role: "planner",
         model: planner.model,
         systemPrompt: SYSTEM_PROMPTS.refine,
-        prompt: this.buildPrompt(task, `## Existing plan\n${planResult.report}`),
+        prompt: await this.buildPrompt(task, `## Existing plan\n${planResult.report}`),
         cwd: stepCwd,
         autoApprove: true,
       });
@@ -253,7 +290,7 @@ export class Pipeline {
         role: "developer",
         model: developer.model,
         systemPrompt: SYSTEM_PROMPTS.developer,
-        prompt: this.buildPrompt(task, `## Plan\n${finalPlan}`),
+        prompt: await this.buildPrompt(task, `## Plan\n${finalPlan}`),
         cwd: stepCwd,
         autoApprove: true,
       });
@@ -281,7 +318,10 @@ export class Pipeline {
         role: "reviewer",
         model: reviewer.model,
         systemPrompt: SYSTEM_PROMPTS.reviewer,
-        prompt: this.buildPrompt(task, `## Plan\n${finalPlan}\n\n## Diff under review\n${diff}`),
+        prompt: await this.buildPrompt(
+          task,
+          `## Plan\n${finalPlan}\n\n## Diff under review\n${diff}`,
+        ),
         cwd: stepCwd,
         autoApprove: true,
       });
@@ -303,6 +343,7 @@ export class Pipeline {
       // Only tear down the worktree on the final iteration; intermediate runs
       // keep it so the next run continues from this run's output.
       if (worktree && isFinalIteration(task)) await cleanupWorktree(workingDirectory, worktree);
+      await this.mirrorLiveLog(task);
       await this.persistUsage(task, usages);
       return { kind: "done", task };
     } catch (err) {
@@ -312,6 +353,7 @@ export class Pipeline {
       const detail = (err as { output?: string })?.output;
       await appendLog(`ERROR: ${message}${detail ? `\n${detail}` : ""}`);
       if (worktree) await cleanupWorktree(workingDirectory, worktree).catch(() => {});
+      await this.mirrorLiveLog(task).catch(() => {});
       await this.persistUsage(task, usages).catch(() => {});
       return { kind: "failed", task, error: message };
     }
@@ -339,7 +381,7 @@ export class Pipeline {
       systemPrompt:
         "You are the PLANNER. Answer the following questions from the " +
         `${fromRole} using the plan and task context. Do not escalate to the user.`,
-      prompt: this.buildPrompt(
+      prompt: await this.buildPrompt(
         task,
         `## Plan\n${plan}\n\n## ${fromRole} questions\n${questions.join("\n")}`,
       ),
@@ -381,5 +423,10 @@ export class Pipeline {
     task.frontmatter.tokens = total;
     await this.deps.store.save(task);
     await this.usageStore.add(total);
+  }
+
+  private async mirrorLiveLog(task: Task): Promise<void> {
+    const text = await readFile(join(this.areaDir(task.frontmatter.id), "log.txt"), "utf8");
+    if (text.trim()) task.body.log = text;
   }
 }

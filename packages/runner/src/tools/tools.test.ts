@@ -1,4 +1,8 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { execCommand } from "../exec.js";
 import { MockTool, mockState, resetMock } from "./mock.js";
 import { parseUsage, sumUsage, UNKNOWN_USAGE } from "./usage.js";
 import { ToolRegistry } from "./registry.js";
@@ -69,6 +73,26 @@ describe("usage parsing", () => {
     expect(total.inputTokens).toBe(4);
     expect(total.outputTokens).toBe(6);
     expect(total.costUsd).toBeCloseTo(0.3);
+  });
+});
+
+describe("exec cancellation", () => {
+  it("stops a child process when the stop signal file appears", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "owl-stop-"));
+    const stopPath = join(dir, "stop");
+    try {
+      setTimeout(() => void writeFile(stopPath, "stop\n"), 100);
+      const res = await execCommand(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+        cwd: dir,
+        timeoutMs: 5000,
+        stopSignalPath: stopPath,
+        stopPollMs: 25,
+      });
+      expect(res.stopped).toBe(true);
+      expect(res.timedOut).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

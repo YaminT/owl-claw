@@ -1,8 +1,15 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { defaultSettings, SettingsStore, taskFilePath } from "@owl/shared";
+import {
+  defaultSettings,
+  SettingsStore,
+  taskFilePath,
+  taskPromptInjectionsPath,
+  taskStopRequestPath,
+  workingAreaDir,
+} from "@owl/shared";
 import { MockTool, ToolRegistry } from "@owl/runner";
 import { createApp } from "./app.js";
 import { TaskService } from "./service.js";
@@ -158,6 +165,30 @@ describe("answers loop API", () => {
     expect(res.frontmatter.status).toBe("pending");
     expect(res.frontmatter.questions).toBe("answered");
     expect(res.body.answers).toBe("Postgres");
+  });
+});
+
+describe("running task controls", () => {
+  it("requests stop and records injected prompts for a running task", async () => {
+    await (await req("/api/tasks", json({ title: "Runtime", status: "pending" }))).json();
+    await service.tasks.transition("runtime", "running");
+    await writeFile(join(workingAreaDir(root, "runtime"), "log.txt"), "");
+
+    const injected = await req("/api/tasks/runtime/inject", json({ prompt: "Focus on tests." }));
+    expect(injected.status).toBe(200);
+    await expect(readFile(taskPromptInjectionsPath(root, "runtime"), "utf8")).resolves.toContain(
+      "Focus on tests.",
+    );
+
+    const stopped = await req("/api/tasks/runtime/stop", { method: "POST" });
+    expect(stopped.status).toBe(200);
+    await expect(readFile(taskStopRequestPath(root, "runtime"), "utf8")).resolves.toContain("T");
+  });
+
+  it("rejects runtime controls for non-running tasks", async () => {
+    await (await req("/api/tasks", json({ title: "Draft" }))).json();
+    expect((await req("/api/tasks/draft/inject", json({ prompt: "x" }))).status).toBe(400);
+    expect((await req("/api/tasks/draft/stop", { method: "POST" })).status).toBe(400);
   });
 });
 

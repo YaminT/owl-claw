@@ -1,4 +1,4 @@
-import { readFile, rm } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   AttachmentStore,
@@ -8,6 +8,9 @@ import {
   MAX_ATTACHMENT_BYTES,
   newTask,
   SettingsStore,
+  taskControlDir,
+  taskPromptInjectionsPath,
+  taskStopRequestPath,
   taskAssetsDir,
   TaskStore,
   uniqueKebabId,
@@ -196,6 +199,42 @@ export class TaskService {
     const path = join(workingAreaDir(this.root, id), "log.txt");
     const log = await readFile(path, "utf8").catch(() => task.body.log);
     return { log, running };
+  }
+
+  async stopTask(id: string): Promise<{ ok: true }> {
+    const task = await this.tasks.get(id);
+    if (!task) throw new ServiceError(404, `Task not found: ${id}`);
+    if (task.frontmatter.status !== "running") {
+      throw new ServiceError(400, "Task is not running");
+    }
+    await mkdir(taskControlDir(this.root, id), { recursive: true });
+    await writeFile(taskStopRequestPath(this.root, id), new Date().toISOString() + "\n", "utf8");
+    await appendFile(
+      join(workingAreaDir(this.root, id), "log.txt"),
+      `\n\n### Stop requested\n${new Date().toISOString()}\n`,
+      "utf8",
+    ).catch(() => {});
+    return { ok: true };
+  }
+
+  async injectPrompt(id: string, prompt: string): Promise<{ ok: true }> {
+    const text = prompt.trim();
+    if (!text) throw new ServiceError(400, "Prompt is required");
+    const task = await this.tasks.get(id);
+    if (!task) throw new ServiceError(404, `Task not found: ${id}`);
+    if (task.frontmatter.status !== "running") {
+      throw new ServiceError(400, "Task is not running");
+    }
+
+    const now = new Date().toISOString();
+    await mkdir(taskControlDir(this.root, id), { recursive: true });
+    await appendFile(taskPromptInjectionsPath(this.root, id), `\n\n## ${now}\n${text}\n`, "utf8");
+    await appendFile(
+      join(workingAreaDir(this.root, id), "log.txt"),
+      `\n\n### Injected prompt\n${text}\n`,
+      "utf8",
+    ).catch(() => {});
+    return { ok: true };
   }
 
   /** Submit answers for a parked task: write answers, mark answered, resume. */

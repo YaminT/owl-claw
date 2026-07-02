@@ -55,6 +55,21 @@ export function workingAreaDir(root: string, id: string): string {
   return join(statusDir(root, "running"), id);
 }
 
+/** Runtime control directory for a running task. */
+export function taskControlDir(root: string, id: string): string {
+  return join(workingAreaDir(root, id), "control");
+}
+
+/** Presence of this file requests cancellation of the running tool process. */
+export function taskStopRequestPath(root: string, id: string): string {
+  return join(taskControlDir(root, id), "stop");
+}
+
+/** User prompts injected while a task is running, consumed between pipeline steps. */
+export function taskPromptInjectionsPath(root: string, id: string): string {
+  return join(taskControlDir(root, id), "prompts.md");
+}
+
 /**
  * Directory holding a task's attachment files: <root>/tasks/assets/<id>/.
  * Keyed by id only, so attachments survive the task moving between status dirs.

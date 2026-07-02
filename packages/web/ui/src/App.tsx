@@ -85,7 +85,9 @@ export function App() {
         )}
         {tab === "tasks" && !editingId && (
           <>
-            {runningTask && <LivePanel key={runningTask.frontmatter.id} task={runningTask} />}
+            {runningTask && (
+              <LivePanel key={runningTask.frontmatter.id} task={runningTask} onChange={refresh} />
+            )}
             <TaskList
               tasks={tasks}
               onEdit={setEditingId}

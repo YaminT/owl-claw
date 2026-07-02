@@ -1,10 +1,12 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 
 export interface ExecResult {
   code: number | null;
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  stopped: boolean;
 }
 
 export interface ExecOptions {
@@ -17,6 +19,10 @@ export interface ExecOptions {
    * the UI. The full output is still accumulated and returned on close.
    */
   onData?: (chunk: string) => void;
+  /** File whose presence requests cooperative cancellation of the child process. */
+  stopSignalPath?: string;
+  /** Poll interval for stopSignalPath. Defaults to 500 ms. */
+  stopPollMs?: number;
 }
 
 /**
@@ -43,13 +49,31 @@ export function execCommand(
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let stopped = false;
     let timer: NodeJS.Timeout | undefined;
+    let stopTimer: NodeJS.Timeout | undefined;
+    let killTimer: NodeJS.Timeout | undefined;
+
+    const clearTimers = () => {
+      if (timer) clearTimeout(timer);
+      if (stopTimer) clearInterval(stopTimer);
+      if (killTimer) clearTimeout(killTimer);
+    };
 
     if (opts.timeoutMs && opts.timeoutMs > 0) {
       timer = setTimeout(() => {
         timedOut = true;
         child.kill("SIGKILL");
       }, opts.timeoutMs);
+    }
+
+    if (opts.stopSignalPath) {
+      stopTimer = setInterval(() => {
+        if (stopped || !opts.stopSignalPath || !existsSync(opts.stopSignalPath)) return;
+        stopped = true;
+        child.kill("SIGTERM");
+        killTimer = setTimeout(() => child.kill("SIGKILL"), 1500);
+      }, opts.stopPollMs ?? 500);
     }
 
     child.stdout.on("data", (d) => {
@@ -64,13 +88,13 @@ export function execCommand(
     });
 
     child.on("error", (err) => {
-      if (timer) clearTimeout(timer);
-      resolve({ code: null, stdout, stderr: stderr + String(err), timedOut });
+      clearTimers();
+      resolve({ code: null, stdout, stderr: stderr + String(err), timedOut, stopped });
     });
 
     child.on("close", (code) => {
-      if (timer) clearTimeout(timer);
-      resolve({ code, stdout, stderr, timedOut });
+      clearTimers();
+      resolve({ code, stdout, stderr, timedOut, stopped });
     });
 
     if (opts.input !== undefined) {

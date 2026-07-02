@@ -80,11 +80,12 @@ export class CodexTool implements Tool {
     const res = await execCommand(this.bin, args, {
       cwd: opts.cwd,
       timeoutMs: opts.timeoutMs,
+      stopSignalPath: opts.stopSignalPath,
       onData: opts.onChunk,
     });
     const output = `$ ${this.bin} ${args.slice(0, -1).join(" ")} <prompt>\n[exit ${res.code}]\n${res.stdout}\n${res.stderr}`;
-    if (res.code !== 0 || res.timedOut) {
-      throw new ToolRunError(this.id, res.code, res.timedOut, output);
+    if (res.code !== 0 || res.timedOut || res.stopped) {
+      throw new ToolRunError(this.id, res.code, res.timedOut, res.stopped, output);
     }
     return { output, report: res.stdout.trim(), usage: parseUsage(res.stdout + res.stderr) };
   }

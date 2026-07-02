@@ -82,14 +82,21 @@ export class ClaudeCodeTool implements Tool {
       cwd: opts.cwd,
       input: opts.prompt,
       timeoutMs: opts.timeoutMs,
+      stopSignalPath: opts.stopSignalPath,
       onData: (chunk) => render.push(chunk),
     });
     render.flush();
 
     const header = `$ ${this.bin} --print --output-format stream-json --model ${opts.model}\n[exit ${res.code}]`;
     const output = `${header}\n${render.transcript}`;
-    if (res.code !== 0 || res.timedOut) {
-      throw new ToolRunError(this.id, res.code, res.timedOut, `${output}\n${res.stderr}`);
+    if (res.code !== 0 || res.timedOut || res.stopped) {
+      throw new ToolRunError(
+        this.id,
+        res.code,
+        res.timedOut,
+        res.stopped,
+        `${output}\n${res.stderr}`,
+      );
     }
     return {
       output,
@@ -262,9 +269,16 @@ export class ToolRunError extends Error {
     public readonly toolId: string,
     public readonly code: number | null,
     public readonly timedOut: boolean,
+    public readonly stopped: boolean,
     public readonly output: string,
   ) {
-    super(timedOut ? `${toolId} timed out` : `${toolId} exited with code ${code ?? "null"}`);
+    super(
+      stopped
+        ? `${toolId} stopped by user`
+        : timedOut
+          ? `${toolId} timed out`
+          : `${toolId} exited with code ${code ?? "null"}`,
+    );
     this.name = "ToolRunError";
   }
 }
